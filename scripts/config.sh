@@ -19,5 +19,14 @@ SERVER_PASS="${SERVER_PASS:-}"
 WORLD_NAME="${WORLD_NAME:-Dedicated}"
 SERVER_PUBLIC="${SERVER_PUBLIC:-false}"
 
+# World modifiers (set at world creation — changing on existing worlds may not take effect)
+# Leave empty for default/normal. See: https://github.com/lloesche/valheim-server-docker#world-modifiers
+MODIFIER_COMBAT="${MODIFIER_COMBAT:-}"           # veryeasy, easy, hard, veryhard
+MODIFIER_DEATHPENALTY="${MODIFIER_DEATHPENALTY:-}" # casual, veryeasy, easy, hard, hardcore
+MODIFIER_RESOURCES="${MODIFIER_RESOURCES:-}"       # muchless, less, more, muchmore, most
+MODIFIER_RAIDS="${MODIFIER_RAIDS:-}"               # none, muchless, less, more, muchmore
+MODIFIER_PORTALS="${MODIFIER_PORTALS:-}"           # casual, hard, veryhard
+MODIFIER_PRESET="${MODIFIER_PRESET:-}"             # casual, easy, normal, hard, hardcore, immersive, hammer
+
 # Docker image — pin to a specific tag for reproducibility
 VALHEIM_IMAGE="lloesche/valheim-server:latest"
