@@ -36,7 +36,7 @@ A quick-deploy Valheim dedicated server on GCP Compute Engine — cheap to run, 
 │  │ Disk /config │  backups, config   │
 │  └──────────────┘                    │
 └──────────────────────────────────────┘
-        │ UDP 2456-2457
+        │ UDP 2456-2458
         ▼
    Players connect via ephemeral IP
 ```
@@ -66,14 +66,16 @@ gcloud config set project $GCP_PROJECT
 
 ### 2. Connect
 
-Get the server IP after starting:
+Start the server and wait for it to be ready:
 
 ```bash
 ./scripts/start.sh
-# Prints the ephemeral IP when ready
+# Polls server logs and prints the IP when actually ready to accept connections
 ```
 
 In Valheim: **Join Game → Add Server → `<ip>:2456`**
+
+> **Note**: First boot takes 5-8 min (downloads ~1.9GB from Steam + world generation). Subsequent boots take 2-4 min (world generation only). The script waits for the server to be fully ready before printing the connection info.
 
 > **Note**: The IP changes each time you start the server (ephemeral). The start script prints it. If you want a fixed IP, see [Static IP](#optional-static-ip) below.
 
@@ -169,7 +171,7 @@ valserver/
 
 ## Troubleshooting
 
-- **"Connection failed"**: Server takes 2-5 min to boot (downloads ~1GB on first start). Check `gcloud compute ssh valserver -- 'docker logs valheim-server'`.
+- **"Connection failed"**: Server takes 2-4 min to boot (5-8 min on first start, which downloads ~1.9GB from Steam). The `start.sh` script waits for the `Registering lobby` log line before printing "ready". If you started manually, check `gcloud compute ssh valserver -- 'docker logs valheim-server'`.
 - **"Password too short"**: `SERVER_PASS` must be at least 5 characters.
 - **World data lost**: Ensure the persistent disk is mounted and the Docker volume maps to it.
 - **Performance issues**: Resize with `gcloud compute instances set-machine-type valserver --machine-type e2-standard-2`.

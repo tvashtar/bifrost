@@ -12,7 +12,7 @@ mkdir -p "$BACKUP_DIR"
 
 echo "==> Creating backup archive on server..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  'sudo tar czf /tmp/valheim-backup.tar.gz -C /mnt/disks/gce-containers-mounts/gce-persistent-disks/valserver-data/ .'
+  'sudo tar czf /tmp/valheim-backup.tar.gz -C /var/valheim/ .'
 
 echo "==> Downloading backup..."
 gcloud compute scp "$VM_NAME:/tmp/valheim-backup.tar.gz" "$BACKUP_DIR/$BACKUP_FILE" \

@@ -2,9 +2,9 @@
 # Shared configuration for all valserver scripts.
 # Override any of these with environment variables before running.
 
-PROJECT="${GCP_PROJECT:-valserver}"
-ZONE="${GCP_ZONE:-us-central1-a}"
-REGION="${GCP_REGION:-us-central1}"
+PROJECT="${GCP_PROJECT:-valserver-487600}"
+ZONE="${GCP_ZONE:-us-east4-c}"
+REGION="${GCP_REGION:-us-east4}"
 
 VM_NAME="valserver"
 MACHINE_TYPE="e2-medium"

@@ -19,7 +19,7 @@ Valheim dedicated server on GCP Compute Engine using Docker. Designed for cheap 
 ## GCP Resources Created
 - `valserver` — e2-medium Compute Engine VM (Container-Optimized OS)
 - `valserver-disk` — 10GB pd-standard persistent disk for world saves
-- `valserver-firewall` — Firewall rule allowing UDP 2456-2457 ingress
+- `valserver-firewall` — Firewall rule allowing UDP 2456-2458 ingress
 
 ## File Layout
 ```
@@ -33,12 +33,22 @@ scripts/
 ```
 
 ## Valheim Server Essentials
-- UDP ports 2456-2457 must be open (firewall rule)
+- UDP ports 2456-2458 must be open (firewall rule) — 2458 is used by Steam
+- Players connect on port **2456** (not 2457)
 - `SERVER_PASS` must be >= 5 characters
-- First boot downloads ~1GB from Steam (takes a few minutes)
+- First boot downloads ~1.9GB from Steam (takes 5-8 min)
+- Subsequent boots take 2-4 min (world generation only, no Steam download)
+- **Ready signal**: `Registering lobby` / `Opened Steam server` in Docker logs
+  - `Game server connected` is NOT the ready signal — world gen still in progress
 - Server needs ~2-4GB RAM for a small group
 - World saves are in `/config/worlds/` inside the container
 - Graceful shutdown: must allow save to complete before VM stops
+
+## COS Gotchas
+- Container-Optimized OS has a **read-only root filesystem** — cannot mkdir under `/mnt`
+- Use `/var/valheim` for the data disk mount point (writable)
+- `gcloud compute instances create-with-container` is **deprecated** — use a startup-script instead
+- Re-run startup script on a live VM: `sudo google_metadata_script_runner startup`
 
 ## Commands
 - `./scripts/setup.sh` — One-time infrastructure setup
