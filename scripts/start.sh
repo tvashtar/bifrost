@@ -4,12 +4,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
+# Timing helper
+START_TIME=$(date +%s)
+step_start() { STEP_START=$(date +%s); }
+step_end() {
+  local elapsed=$(($(date +%s) - STEP_START))
+  echo "    (took ${elapsed}s)"
+}
+
 READY_TIMEOUT=600  # 10 minutes (first boot downloads ~1.9GB from Steam)
 POLL_INTERVAL=5
 
+step_start
 echo "==> Starting $VM_NAME..."
 gcloud compute instances start "$VM_NAME" --zone="$ZONE" --quiet
+step_end
 
+step_start
 echo "==> Waiting for VM to get an IP..."
 sleep 5
 
@@ -18,6 +29,9 @@ IP=$(gcloud compute instances describe "$VM_NAME" \
   --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 
 echo "    VM IP: $IP"
+step_end
+
+step_start
 echo "==> Waiting for Valheim server to be ready (this can take 2-8 min)..."
 
 # Capture the current timestamp so we only match log lines from THIS boot,
@@ -29,8 +43,11 @@ while [ $elapsed -lt $READY_TIMEOUT ]; do
   # Check docker logs since this boot for the real ready signal
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
     "docker logs --since '$BOOT_TS' valheim-server 2>&1 | grep -q 'Registering lobby'" 2>/dev/null; then
+    step_end
+    TOTAL_TIME=$(($(date +%s) - START_TIME))
     echo ""
     echo "==> Server is ready!"
+    echo "    Total start time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
     echo "    Connect in Valheim: $IP:2456"
     echo ""
     exit 0
@@ -44,8 +61,10 @@ while [ $elapsed -lt $READY_TIMEOUT ]; do
   fi
 done
 
+TOTAL_TIME=$(($(date +%s) - START_TIME))
 echo ""
 echo "==> Timed out after ${READY_TIMEOUT}s waiting for server readiness."
+echo "    Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
 echo "    The server may still be starting (first boot downloads ~1.9GB)."
 echo "    Connect in Valheim: $IP:2456"
 echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f valheim-server'"

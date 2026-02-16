@@ -4,6 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
+# Timing helper
+SETUP_START=$(date +%s)
+step_start() { STEP_START=$(date +%s); }
+step_end() {
+  local elapsed=$(($(date +%s) - STEP_START))
+  echo "    (took ${elapsed}s)"
+}
+
 # Parse flags
 RESTORE_FILE=""
 while [[ $# -gt 0 ]]; do
@@ -58,9 +66,12 @@ fi
 echo "==> Setting project to $PROJECT"
 gcloud config set project "$PROJECT" --quiet
 
+step_start
 echo "==> Enabling Compute Engine API (if needed)..."
 gcloud services enable compute.googleapis.com --quiet
+step_end
 
+step_start
 echo "==> Creating firewall rule for UDP 2456-2457..."
 gcloud compute firewall-rules create "$FIREWALL_RULE" \
   --direction=INGRESS \
@@ -71,13 +82,16 @@ gcloud compute firewall-rules create "$FIREWALL_RULE" \
   --source-ranges=0.0.0.0/0 \
   --target-tags="$NETWORK_TAG" \
   2>/dev/null || echo "    (firewall rule already exists, skipping)"
+step_end
 
+step_start
 echo "==> Creating persistent disk for world saves..."
 gcloud compute disks create "$DISK_NAME" \
   --zone="$ZONE" \
   --size="${DISK_SIZE}GB" \
   --type=pd-standard \
   2>/dev/null || echo "    (disk already exists, skipping)"
+step_end
 
 # Write the startup script to a temp file for --metadata-from-file.
 # COS comes with Docker preinstalled. This runs on every boot:
@@ -131,6 +145,7 @@ else
 fi
 EOF
 
+step_start
 echo "==> Creating VM with Container-Optimized OS..."
 gcloud compute instances create "$VM_NAME" \
   --zone="$ZONE" \
@@ -142,6 +157,7 @@ gcloud compute instances create "$VM_NAME" \
   --disk="name=$DISK_NAME,device-name=valserver-data,mode=rw,auto-delete=no" \
   --metadata-from-file=startup-script="$STARTUP_FILE" \
   --scopes=default
+step_end
 
 IP=$(gcloud compute instances describe "$VM_NAME" \
   --zone="$ZONE" \
@@ -152,6 +168,7 @@ echo "==> Setup complete! VM IP: $IP"
 
 # If restoring, upload backup before container finishes starting
 if [ -n "$RESTORE_FILE" ]; then
+  step_start
   echo "==> Uploading world backup to server..."
   # Wait for SSH and data disk mount to be available
   for i in $(seq 1 24); do
@@ -166,9 +183,11 @@ if [ -n "$RESTORE_FILE" ]; then
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
     'sudo mkdir -p /var/valheim/worlds_local && sudo tar xzf /tmp/valheim-restore.tar.gz -C /var/valheim/worlds_local/ && rm -f /tmp/valheim-restore.tar.gz'
   echo "    World files uploaded."
+  step_end
 fi
 
 echo "    First boot downloads ~1.9GB from Steam — this takes 5-8 min."
+step_start
 echo "==> Waiting for Valheim server to be ready..."
 
 READY_TIMEOUT=900  # 15 minutes (first boot downloads ~1.9GB + world gen)
@@ -178,8 +197,11 @@ elapsed=0
 while [ $elapsed -lt $READY_TIMEOUT ]; do
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
     "docker logs --since '$BOOT_TS' valheim-server 2>&1 | grep -q 'Registering lobby'" 2>/dev/null; then
+    step_end
+    TOTAL_TIME=$(($(date +%s) - SETUP_START))
     echo ""
     echo "==> Server is ready!"
+    echo "    Total setup time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
     echo "    Connect in Valheim: $IP:2456"
     echo "    Password: (the one you set)"
     echo ""
@@ -194,8 +216,10 @@ while [ $elapsed -lt $READY_TIMEOUT ]; do
   fi
 done
 
+TOTAL_TIME=$(($(date +%s) - SETUP_START))
 echo ""
 echo "==> Timed out waiting for readiness (server may still be starting)."
+echo "    Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
 echo "    Connect in Valheim: $IP:2456"
 echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f valheim-server'"
 echo "    Stop server: ./val stop"
