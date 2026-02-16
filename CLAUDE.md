@@ -23,20 +23,28 @@ Valheim dedicated server on GCP Compute Engine using Docker. Designed for cheap 
 
 ## File Layout
 ```
-val                     — CLI entry point (./val start, ./val stop, etc.)
-docker-compose.yml      — Local testing
+val                          — CLI entry point (./val start, ./val stop, etc.)
+.env                         — FTP credentials for Gportals (gitignored)
+docker-compose.yml           — Local testing
 scripts/
-  config.sh             — Shared config (project, zone, VM name, etc.)
-  config.sh             — Shared config (project, zone, VM name, etc.)
-  setup.sh              — One-time GCP resource creation (VM, disk, firewall)
-  start.sh              — Start VM, wait for healthy, print IP
-  stop.sh               — Graceful save → wait → stop VM
-  update.sh             — Pull latest image + redownload game (for Valheim patches)
-  backup.sh             — Download world save tarball locally
-  restore.sh            — Restore world from backup (auto-detects world name)
-  export-world.sh       — Export local Valheim world to backup format
-  teardown.sh           — Destroy all GCP resources (with confirmation)
+  config.sh                  — Shared config (project, zone, VM name, etc.)
+  setup.sh                   — One-time GCP resource creation (VM, disk, firewall)
+  start.sh                   — Start VM, wait for healthy, print IP
+  stop.sh                    — Graceful save → wait → stop VM
+  update.sh                  — Pull latest image + redownload game (for Valheim patches)
+  backup.sh                  — Download world save tarball from GCP server
+  fetch-gportals-backup.sh   — Download latest backup from Gportals FTP
+  restore.sh                 — Restore world from backup (auto-detects world name)
+  export-world.sh            — Export local Valheim world to backup format
+  teardown.sh                — Destroy all GCP resources (with confirmation)
 ```
+
+## Gportals FTP Integration
+To fetch backups from Gportals, create a `.env` file:
+```bash
+FTP_URL="ftp://username:password@host:port"
+```
+Then use: `./val fetch-gportals <world-name>` (e.g., `./val fetch-gportals Finnland`)
 
 ## Valheim Server Essentials
 - UDP ports 2456-2458 must be open (firewall rule) — 2458 is used by Steam
@@ -68,7 +76,8 @@ scripts/
 - `./val start` — Start server, wait for ready, print connection IP
 - `./val stop` — Save and stop server
 - `./val update` — Pull latest image + redownload game files (for Valheim patches)
-- `./val backup` — Download world backup
+- `./val backup` — Download world backup from GCP server
+- `./val fetch-gportals <world-name>` — Download latest backup from Gportals FTP (requires `.env` with `FTP_URL`)
 - `./val restore [path/to/backup.tar.gz]` — Restore world (auto-detects world name, updates metadata if needed)
 - `./val export-world [path/to/worlds]` — Export local Valheim world to backup format
 - `./val teardown` — Delete all GCP resources

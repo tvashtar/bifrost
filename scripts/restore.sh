@@ -63,7 +63,7 @@ gcloud compute scp "$BACKUP_FILE" "$VM_NAME:/tmp/valheim-restore.tar.gz" \
 
 echo "==> Extracting backup to data disk..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  'sudo tar xzf /tmp/valheim-restore.tar.gz -C /var/valheim/ && rm -f /tmp/valheim-restore.tar.gz'
+  'sudo mkdir -p /var/valheim/worlds_local && sudo tar xzf /tmp/valheim-restore.tar.gz -C /var/valheim/worlds_local/ && rm -f /tmp/valheim-restore.tar.gz'
 
 # Check if WORLD_NAME changed — if so, recreate container with new metadata
 CURRENT_WORLD=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \

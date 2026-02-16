@@ -164,7 +164,7 @@ if [ -n "$RESTORE_FILE" ]; then
   gcloud compute scp "$RESTORE_FILE" "$VM_NAME:/tmp/valheim-restore.tar.gz" \
     --zone="$ZONE" --quiet
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-    'sudo tar xzf /tmp/valheim-restore.tar.gz -C /var/valheim/ && rm -f /tmp/valheim-restore.tar.gz'
+    'sudo mkdir -p /var/valheim/worlds_local && sudo tar xzf /tmp/valheim-restore.tar.gz -C /var/valheim/worlds_local/ && rm -f /tmp/valheim-restore.tar.gz'
   echo "    World files uploaded."
 fi
 
