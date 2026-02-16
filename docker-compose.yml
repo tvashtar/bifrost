@@ -1,0 +1,21 @@
+services:
+  valheim:
+    image: lloesche/valheim-server:latest
+    container_name: valheim-server
+    restart: unless-stopped
+    stop_grace_period: 30s
+    cap_add:
+      - SYS_NICE
+    ports:
+      - "2456-2457:2456-2457/udp"
+    environment:
+      - SERVER_NAME=${SERVER_NAME:-Valserver Local}
+      - SERVER_PASS=${SERVER_PASS:-localtest}
+      - WORLD_NAME=${WORLD_NAME:-LocalWorld}
+      - SERVER_PUBLIC=false
+      - BACKUPS_CRON=*/15 * * * *
+    volumes:
+      - valheim-data:/config
+
+volumes:
+  valheim-data:
