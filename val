@@ -10,8 +10,11 @@ case "${1:-}" in
   fetch-gportals)
     exec "$SCRIPTS_DIR/fetch-gportals-backup.sh" "${@:2}"
     ;;
+  update-modifiers)
+    exec "$SCRIPTS_DIR/update-modifiers.sh" "${@:2}"
+    ;;
   *)
-    echo "Usage: val {start|stop|setup|backup|restore|export-world|fetch-gportals|teardown|update}"
+    echo "Usage: val {start|stop|setup|backup|restore|export-world|fetch-gportals|update-modifiers|teardown|update}"
     exit 1
     ;;
 esac

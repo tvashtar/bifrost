@@ -68,6 +68,9 @@ SERVER_PASS='yourpass' ./val setup --restore=backups/your-backup.tar.gz
 
 # Use --size=medium for larger groups (4GB RAM instead of 2GB)
 SERVER_PASS='yourpass' ./val setup --size=medium
+
+# Set difficulty during setup (see World Modifiers section for details)
+MODIFIER_PRESET=casual SERVER_PASS='yourpass' ./val setup
 ```
 
 ### 2. Connect
@@ -150,6 +153,78 @@ gcloud compute instances add-metadata valserver \
   --metadata SERVER_NAME="New Name"
 ```
 
+## World Modifiers (Difficulty Settings)
+
+Valheim supports world modifiers to adjust difficulty. You can set these during setup or change them later.
+
+### Available Modifiers
+
+| Modifier | Options | Description |
+|---|---|---|
+| `MODIFIER_COMBAT` | `veryeasy`, `easy`, `hard`, `veryhard` | Enemy damage and health |
+| `MODIFIER_DEATHPENALTY` | `casual`, `veryeasy`, `easy`, `hard`, `hardcore` | Skill loss and equipment on death |
+| `MODIFIER_RESOURCES` | `muchless`, `less`, `more`, `muchmore`, `most` | Resource drop rates |
+| `MODIFIER_RAIDS` | `none`, `muchless`, `less`, `more`, `muchmore` | Raid frequency |
+| `MODIFIER_PORTALS` | `casual`, `hard`, `veryhard` | Portal restrictions (casual allows ore) |
+| `MODIFIER_PRESET` | `casual`, `easy`, `normal`, `hard`, `hardcore`, `immersive`, `hammer` | Preset combinations |
+
+### Setup with Custom Modifiers
+
+To create a world with specific difficulty settings:
+
+```bash
+# Easy mode: casual combat, no raids, can teleport with ore
+MODIFIER_COMBAT=veryeasy \
+MODIFIER_RAIDS=none \
+MODIFIER_PORTALS=casual \
+SERVER_PASS='yourpass' ./val setup
+
+# Hard mode preset
+MODIFIER_PRESET=hard \
+SERVER_PASS='yourpass' ./val setup
+
+# Custom mix: hard combat but more resources
+MODIFIER_COMBAT=veryhard \
+MODIFIER_RESOURCES=muchmore \
+SERVER_PASS='yourpass' ./val setup
+```
+
+### Change Modifiers on Existing World
+
+Use the `update-modifiers` command to adjust difficulty on a running world:
+
+```bash
+# Check current modifiers (reads from .fwl file)
+./val update-modifiers --list
+
+# Apply a preset (casual, easy, normal, hard, etc.)
+./val update-modifiers --preset=casual
+
+# Change specific modifiers
+./val update-modifiers --raids=muchless --resources=more
+
+# Enable raids but keep other settings
+./val update-modifiers --raids=muchless
+
+# Reset to normal/default difficulty
+./val update-modifiers --reset
+```
+
+**Note**: Changing modifiers requires stopping and restarting the server (~3-5 min downtime). The script handles this automatically. Your world save is preserved - only difficulty settings change.
+
+### Examples
+
+```bash
+# Start with very easy mode for beginners
+MODIFIER_PRESET=casual SERVER_PASS='yourpass' ./val setup
+
+# Later, add some challenge back
+./val update-modifiers --raids=muchless --combat=easy
+
+# Or go full hardcore
+./val update-modifiers --preset=hardcore
+```
+
 ## Cost Breakdown
 
 For a small friend group playing ~20 hours/month:
@@ -191,15 +266,17 @@ valserver/
 ├── val                     # CLI entry point (./val start, ./val stop, etc.)
 ├── docker-compose.yml      # Local development/testing
 ├── scripts/
-│   ├── config.sh           # Shared config (project, zone, VM name, etc.)
-│   ├── setup.sh            # One-time: create VM, firewall, disk
-│   ├── start.sh            # Start VM, wait for ready, print IP
-│   ├── stop.sh             # Graceful save + stop VM
-│   ├── update.sh           # Pull latest image + redownload game files
-│   ├── backup.sh           # Download world save locally
-│   ├── restore.sh          # Restore world from backup
-│   ├── export-world.sh     # Export local Valheim world to backup format
-│   └── teardown.sh         # Destroy all GCP resources
+│   ├── config.sh                  # Shared config (project, zone, VM name, etc.)
+│   ├── setup.sh                   # One-time: create VM, firewall, disk
+│   ├── start.sh                   # Start VM, wait for ready, print IP
+│   ├── stop.sh                    # Graceful save + stop VM
+│   ├── update.sh                  # Pull latest image + redownload game files
+│   ├── update-modifiers.sh        # Change world difficulty/modifiers
+│   ├── backup.sh                  # Download world save locally
+│   ├── restore.sh                 # Restore world from backup
+│   ├── export-world.sh            # Export local Valheim world to backup format
+│   ├── fetch-gportals-backup.sh   # Download backup from Gportals FTP
+│   └── teardown.sh                # Destroy all GCP resources
 ├── CLAUDE.md
 └── README.md
 ```
