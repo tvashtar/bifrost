@@ -23,6 +23,20 @@ if [ ! -f "$BACKUP_FILE" ]; then
   exit 1
 fi
 
+# Detect world name from backup (look for .fwl files, exclude auto-backups)
+DETECTED_WORLD=$(tar tzf "$BACKUP_FILE" | grep -E '\.fwl$' | grep -v '_backup_' | head -1 | sed 's|.*/||; s|\.fwl$||')
+if [ -z "$DETECTED_WORLD" ]; then
+  # Fall back to any .fwl file
+  DETECTED_WORLD=$(tar tzf "$BACKUP_FILE" | grep -E '\.fwl$' | head -1 | sed 's|.*/||; s|\.fwl$||')
+fi
+
+if [ -n "$DETECTED_WORLD" ]; then
+  echo "==> Detected world name: $DETECTED_WORLD"
+  WORLD_NAME="$DETECTED_WORLD"
+else
+  echo "==> No world files found in backup, using WORLD_NAME=$WORLD_NAME"
+fi
+
 echo "==> Restoring from: $BACKUP_FILE"
 echo "    This will overwrite the current world save on the server."
 read -r -p "    Proceed? Type 'yes': " confirm
@@ -51,9 +65,64 @@ echo "==> Extracting backup to data disk..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
   'sudo tar xzf /tmp/valheim-restore.tar.gz -C /var/valheim/ && rm -f /tmp/valheim-restore.tar.gz'
 
-echo "==> Starting Valheim container..."
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  'docker start valheim-server'
+# Check if WORLD_NAME changed — if so, recreate container with new metadata
+CURRENT_WORLD=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+  'docker inspect valheim-server --format="{{range .Config.Env}}{{println .}}{{end}}"' 2>/dev/null \
+  | grep '^WORLD_NAME=' | cut -d= -f2)
+
+if [ "$WORLD_NAME" != "$CURRENT_WORLD" ]; then
+  echo "==> World name changed ($CURRENT_WORLD → $WORLD_NAME), updating server config..."
+
+  # Update startup script metadata with new WORLD_NAME
+  STARTUP_FILE=$(mktemp)
+  trap 'rm -f "$STARTUP_FILE"' EXIT
+  cat > "$STARTUP_FILE" <<EOF
+#!/bin/bash
+set -e
+
+DATA_DEV="/dev/disk/by-id/google-valserver-data"
+DATA_MNT="/var/valheim"
+
+if ! blkid "\$DATA_DEV" &>/dev/null; then
+  echo "Formatting data disk..."
+  mkfs.ext4 -m 0 -F -E lazy_itable_init=0 "\$DATA_DEV"
+fi
+
+mkdir -p "\$DATA_MNT"
+mount -o discard,defaults "\$DATA_DEV" "\$DATA_MNT" || true
+
+if docker container inspect valheim-server &>/dev/null; then
+  echo "Starting existing Valheim container..."
+  docker start valheim-server
+else
+  echo "First boot — pulling image and creating container..."
+  docker pull $VALHEIM_IMAGE
+  docker run -d \
+    --name valheim-server \
+    --restart unless-stopped \
+    --cap-add SYS_NICE \
+    --stop-timeout 30 \
+    -p 2456-2458:2456-2458/udp \
+    -e SERVER_NAME="$SERVER_NAME" \
+    -e SERVER_PASS="$SERVER_PASS" \
+    -e WORLD_NAME="$WORLD_NAME" \
+    -e SERVER_PUBLIC="$SERVER_PUBLIC" \
+    -e BACKUPS_CRON="*/15 * * * *" \
+    -v "\$DATA_MNT:/config" \
+    $VALHEIM_IMAGE
+fi
+EOF
+  gcloud compute instances add-metadata "$VM_NAME" --zone="$ZONE" \
+    --metadata-from-file=startup-script="$STARTUP_FILE"
+
+  # Recreate container with new WORLD_NAME
+  gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    'docker rm valheim-server && sudo google_metadata_script_runner startup'
+else
+  echo "==> Starting Valheim container..."
+  gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    'docker start valheim-server'
+fi
 
 echo "==> Waiting for server to be ready..."
 READY_TIMEOUT=600

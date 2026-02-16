@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
 # Parse flags
+RESTORE_FILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --size=small)  MACHINE_TYPE="e2-small";  shift ;;
@@ -13,12 +14,33 @@ while [[ $# -gt 0 ]]; do
       echo "ERROR: Unknown size '${1#--size=}'. Use --size=small or --size=medium."
       exit 1
       ;;
+    --restore=*)
+      RESTORE_FILE="${1#--restore=}"
+      if [ ! -f "$RESTORE_FILE" ]; then
+        echo "ERROR: Backup file not found: $RESTORE_FILE"
+        exit 1
+      fi
+      shift
+      ;;
     *)
-      echo "Usage: SERVER_PASS='yourpass' ./val setup [--size=small|medium]"
+      echo "Usage: SERVER_PASS='yourpass' ./val setup [--size=small|medium] [--restore=path/to/backup.tar.gz]"
       exit 1
       ;;
   esac
 done
+
+# If restoring, detect world name from backup
+if [ -n "$RESTORE_FILE" ]; then
+  DETECTED_WORLD=$(tar tzf "$RESTORE_FILE" | grep -E '\.fwl$' | grep -v '_backup_' | head -1 | sed 's|.*/||; s|\.fwl$||')
+  if [ -z "$DETECTED_WORLD" ]; then
+    DETECTED_WORLD=$(tar tzf "$RESTORE_FILE" | grep -E '\.fwl$' | head -1 | sed 's|.*/||; s|\.fwl$||')
+  fi
+  if [ -n "$DETECTED_WORLD" ]; then
+    echo "==> Detected world name from backup: $DETECTED_WORLD"
+    WORLD_NAME="$DETECTED_WORLD"
+  fi
+  echo "==> Will restore from: $RESTORE_FILE (skips world generation)"
+fi
 
 echo "    Machine type: $MACHINE_TYPE"
 
@@ -121,6 +143,25 @@ IP=$(gcloud compute instances describe "$VM_NAME" \
 
 echo ""
 echo "==> Setup complete! VM IP: $IP"
+
+# If restoring, upload backup before container finishes starting
+if [ -n "$RESTORE_FILE" ]; then
+  echo "==> Uploading world backup to server..."
+  # Wait for SSH and data disk mount to be available
+  for i in $(seq 1 24); do
+    if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+      'mountpoint -q /var/valheim' 2>/dev/null; then
+      break
+    fi
+    sleep 5
+  done
+  gcloud compute scp "$RESTORE_FILE" "$VM_NAME:/tmp/valheim-restore.tar.gz" \
+    --zone="$ZONE" --quiet
+  gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    'sudo tar xzf /tmp/valheim-restore.tar.gz -C /var/valheim/ && rm -f /tmp/valheim-restore.tar.gz'
+  echo "    World files uploaded."
+fi
+
 echo "    First boot downloads ~1.9GB from Steam — this takes 5-8 min."
 echo "==> Waiting for Valheim server to be ready..."
 

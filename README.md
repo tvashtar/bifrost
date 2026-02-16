@@ -61,7 +61,13 @@ export GCP_PROJECT="your-project-id"
 gcloud config set project $GCP_PROJECT
 
 # Run the setup script (creates VM, firewall rules, disk)
-./val setup
+SERVER_PASS='yourpass' ./val setup
+
+# Or restore an existing world during setup (skips world generation)
+SERVER_PASS='yourpass' ./val setup --restore=backups/your-backup.tar.gz
+
+# Use --size=medium for larger groups (4GB RAM instead of 2GB)
+SERVER_PASS='yourpass' ./val setup --size=medium
 ```
 
 ### 2. Connect
@@ -79,7 +85,22 @@ In Valheim: **Join Game → Add Server → `<ip>:2456`**
 
 > **Note**: The IP changes each time you start the server (ephemeral). The start script prints it. If you want a fixed IP, see [Static IP](#optional-static-ip) below.
 
-### 3. Update (after a Valheim patch)
+### 3. Backup / Restore / Export
+
+```bash
+# Download world save from server
+./val backup
+
+# Restore a backup to the server (auto-detects world name)
+./val restore backups/valheim-backup-20260215.tar.gz
+
+# Export a world from your local Valheim game files
+./val export-world
+# Then restore it to the server
+./val restore backups/valheim-backup-20260215.tar.gz
+```
+
+### 4. Update (after a Valheim patch)
 
 ```bash
 ./val update
@@ -88,7 +109,7 @@ In Valheim: **Join Game → Add Server → `<ip>:2456`**
 
 World saves are preserved — only the server binary is refreshed.
 
-### 4. Stop / Start (save money)
+### 5. Stop / Start (save money)
 
 ```bash
 # Stop the server (only disk billed while stopped — ~$0.40/mo)
@@ -98,7 +119,7 @@ World saves are preserved — only the server binary is refreshed.
 ./val start
 ```
 
-### 5. Tear Down Completely
+### 6. Tear Down Completely
 
 ```bash
 # Download your world save first
@@ -176,6 +197,8 @@ valserver/
 │   ├── stop.sh             # Graceful save + stop VM
 │   ├── update.sh           # Pull latest image + redownload game files
 │   ├── backup.sh           # Download world save locally
+│   ├── restore.sh          # Restore world from backup
+│   ├── export-world.sh     # Export local Valheim world to backup format
 │   └── teardown.sh         # Destroy all GCP resources
 ├── CLAUDE.md
 └── README.md

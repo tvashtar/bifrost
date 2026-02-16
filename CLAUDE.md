@@ -27,11 +27,14 @@ val                     — CLI entry point (./val start, ./val stop, etc.)
 docker-compose.yml      — Local testing
 scripts/
   config.sh             — Shared config (project, zone, VM name, etc.)
+  config.sh             — Shared config (project, zone, VM name, etc.)
   setup.sh              — One-time GCP resource creation (VM, disk, firewall)
   start.sh              — Start VM, wait for healthy, print IP
   stop.sh               — Graceful save → wait → stop VM
   update.sh             — Pull latest image + redownload game (for Valheim patches)
   backup.sh             — Download world save tarball locally
+  restore.sh            — Restore world from backup (auto-detects world name)
+  export-world.sh       — Export local Valheim world to backup format
   teardown.sh           — Destroy all GCP resources (with confirmation)
 ```
 
@@ -52,13 +55,22 @@ scripts/
 - Use `/var/valheim` for the data disk mount point (writable)
 - `gcloud compute instances create-with-container` is **deprecated** — use a startup-script instead
 - Re-run startup script on a live VM: `sudo google_metadata_script_runner startup`
+- **Race condition on boot**: After VM creation, SSH may be available before the startup script mounts the data disk. Always wait for `mountpoint -q /var/valheim` before writing to the data disk.
+
+## Startup Script & Metadata
+- Server config (SERVER_PASS, WORLD_NAME, etc.) is baked into the VM startup script metadata
+- Changing WORLD_NAME requires updating metadata AND recreating the container (restore.sh handles this automatically)
+- The startup script reuses existing containers (`docker start`) — only creates new ones on first boot
+- To force a fresh container (e.g., after image update): remove container, then re-run startup script
 
 ## Commands
-- `./val setup` — One-time infrastructure setup
+- `./val setup [--size=small|medium] [--restore=path/to/backup.tar.gz]` — One-time infrastructure setup
 - `./val start` — Start server, wait for ready, print connection IP
 - `./val stop` — Save and stop server
 - `./val update` — Pull latest image + redownload game files (for Valheim patches)
 - `./val backup` — Download world backup
+- `./val restore [path/to/backup.tar.gz]` — Restore world (auto-detects world name, updates metadata if needed)
+- `./val export-world [path/to/worlds]` — Export local Valheim world to backup format
 - `./val teardown` — Delete all GCP resources
 - `docker compose up` — Run locally for testing
 
