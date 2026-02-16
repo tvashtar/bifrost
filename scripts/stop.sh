@@ -13,4 +13,4 @@ gcloud compute instances stop "$VM_NAME" --zone="$ZONE" --quiet
 
 echo ""
 echo "==> Server stopped. Only disk storage is billed (~\$0.40/mo)."
-echo "    Restart with: ./scripts/start.sh"
+echo "    Restart with: ./val start"

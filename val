@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPTS_DIR="$(dirname "$0")/scripts"
+
+case "${1:-}" in
+  start|stop|setup|backup|restore|teardown|update|export-world)
+    exec "$SCRIPTS_DIR/$1.sh" "${@:2}"
+    ;;
+  *)
+    echo "Usage: val {start|stop|setup|backup|restore|export-world|teardown|update}"
+    exit 1
+    ;;
+esac

@@ -4,9 +4,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
+# Parse flags
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --size=small)  MACHINE_TYPE="e2-small";  shift ;;
+    --size=medium) MACHINE_TYPE="e2-medium"; shift ;;
+    --size=*)
+      echo "ERROR: Unknown size '${1#--size=}'. Use --size=small or --size=medium."
+      exit 1
+      ;;
+    *)
+      echo "Usage: SERVER_PASS='yourpass' ./val setup [--size=small|medium]"
+      exit 1
+      ;;
+  esac
+done
+
+echo "    Machine type: $MACHINE_TYPE"
+
 if [ -z "$SERVER_PASS" ]; then
   echo "ERROR: SERVER_PASS must be set (min 5 characters)."
-  echo "Usage: SERVER_PASS='yourpass' ./scripts/setup.sh"
+  echo "Usage: SERVER_PASS='yourpass' ./val setup [--size=small|medium]"
   exit 1
 fi
 
@@ -62,25 +80,27 @@ fi
 mkdir -p "\$DATA_MNT"
 mount -o discard,defaults "\$DATA_DEV" "\$DATA_MNT" || true
 
-# Pull and run the Valheim server container
-docker pull $VALHEIM_IMAGE
-
-# Stop any existing container
-docker rm -f valheim-server 2>/dev/null || true
-
-docker run -d \
-  --name valheim-server \
-  --restart unless-stopped \
-  --cap-add SYS_NICE \
-  --stop-timeout 30 \
-  -p 2456-2458:2456-2458/udp \
-  -e SERVER_NAME="$SERVER_NAME" \
-  -e SERVER_PASS="$SERVER_PASS" \
-  -e WORLD_NAME="$WORLD_NAME" \
-  -e SERVER_PUBLIC="$SERVER_PUBLIC" \
-  -e BACKUPS_CRON="*/15 * * * *" \
-  -v "\$DATA_MNT:/config" \
-  $VALHEIM_IMAGE
+# Start existing container, or create a new one on first boot
+if docker container inspect valheim-server &>/dev/null; then
+  echo "Starting existing Valheim container..."
+  docker start valheim-server
+else
+  echo "First boot — pulling image and creating container..."
+  docker pull $VALHEIM_IMAGE
+  docker run -d \
+    --name valheim-server \
+    --restart unless-stopped \
+    --cap-add SYS_NICE \
+    --stop-timeout 30 \
+    -p 2456-2458:2456-2458/udp \
+    -e SERVER_NAME="$SERVER_NAME" \
+    -e SERVER_PASS="$SERVER_PASS" \
+    -e WORLD_NAME="$WORLD_NAME" \
+    -e SERVER_PUBLIC="$SERVER_PUBLIC" \
+    -e BACKUPS_CRON="*/15 * * * *" \
+    -v "\$DATA_MNT:/config" \
+    $VALHEIM_IMAGE
+fi
 EOF
 
 echo "==> Creating VM with Container-Optimized OS..."
@@ -89,7 +109,7 @@ gcloud compute instances create "$VM_NAME" \
   --machine-type="$MACHINE_TYPE" \
   --image-family=cos-stable \
   --image-project=cos-cloud \
-  --boot-disk-size=30GB \
+  --boot-disk-size=10GB \
   --tags="$NETWORK_TAG" \
   --disk="name=$DISK_NAME,device-name=valserver-data,mode=rw,auto-delete=no" \
   --metadata-from-file=startup-script="$STARTUP_FILE" \
@@ -104,18 +124,19 @@ echo "==> Setup complete! VM IP: $IP"
 echo "    First boot downloads ~1.9GB from Steam — this takes 5-8 min."
 echo "==> Waiting for Valheim server to be ready..."
 
-READY_TIMEOUT=600  # 10 minutes
+READY_TIMEOUT=900  # 15 minutes (first boot downloads ~1.9GB + world gen)
 POLL_INTERVAL=10
+BOOT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 elapsed=0
 while [ $elapsed -lt $READY_TIMEOUT ]; do
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    'docker logs valheim-server 2>&1 | grep -q "Registering lobby"' 2>/dev/null; then
+    "docker logs --since '$BOOT_TS' valheim-server 2>&1 | grep -q 'Registering lobby'" 2>/dev/null; then
     echo ""
     echo "==> Server is ready!"
     echo "    Connect in Valheim: $IP:2456"
     echo "    Password: (the one you set)"
     echo ""
-    echo "    Stop server: ./scripts/stop.sh"
+    echo "    Stop server: ./val stop"
     exit 0
   fi
 
@@ -130,4 +151,4 @@ echo ""
 echo "==> Timed out waiting for readiness (server may still be starting)."
 echo "    Connect in Valheim: $IP:2456"
 echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f valheim-server'"
-echo "    Stop server: ./scripts/stop.sh"
+echo "    Stop server: ./val stop"

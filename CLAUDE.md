@@ -4,30 +4,33 @@
 Valheim dedicated server on GCP Compute Engine using Docker. Designed for cheap pay-per-use hosting with easy stop/start for casual play sessions.
 
 ## Tech Stack
-- **GCP Compute Engine**: e2-medium VM with Container-Optimized OS (COS)
+- **GCP Compute Engine**: e2-small VM with Container-Optimized OS (COS)
 - **Docker**: `lloesche/valheim-server-docker` image (pin to specific tag)
 - **gcloud CLI**: All infrastructure management
 - **Bash scripts**: Convenience wrappers for setup/start/stop/backup/teardown
 
 ## Key Decisions
-- **GCP over Fly.io**: Cheaper (~$1.17/mo vs ~$4/mo) because stopped VMs only bill for disk, and ephemeral IPs are nearly free
+- **GCP over Fly.io**: Cheaper (~$0.84/mo vs ~$4/mo) because stopped VMs only bill for disk, and ephemeral IPs are nearly free
 - **GCP over Railway**: Railway has no inbound UDP support (Valheim requires UDP 2456-2457)
 - **Ephemeral IP by default**: Saves ~$3.50/mo vs static IP. IP changes on restart but start script prints it
 - **Container-Optimized OS**: Preinstalled Docker, minimal attack surface, auto-updates
 - **lloesche/valheim-server-docker**: Auto-updates Valheim, world backups, mod support, actively maintained
 
 ## GCP Resources Created
-- `valserver` — e2-medium Compute Engine VM (Container-Optimized OS)
-- `valserver-disk` — 10GB pd-standard persistent disk for world saves
-- `valserver-firewall` — Firewall rule allowing UDP 2456-2458 ingress
+- `valserver` — e2-small Compute Engine VM (Container-Optimized OS)
+- `valserver-data` — 10GB pd-standard persistent disk for world saves
+- `valserver-allow-valheim` — Firewall rule allowing UDP 2456-2458 ingress
 
 ## File Layout
 ```
+val                     — CLI entry point (./val start, ./val stop, etc.)
 docker-compose.yml      — Local testing
 scripts/
+  config.sh             — Shared config (project, zone, VM name, etc.)
   setup.sh              — One-time GCP resource creation (VM, disk, firewall)
   start.sh              — Start VM, wait for healthy, print IP
   stop.sh               — Graceful save → wait → stop VM
+  update.sh             — Pull latest image + redownload game (for Valheim patches)
   backup.sh             — Download world save tarball locally
   teardown.sh           — Destroy all GCP resources (with confirmation)
 ```
@@ -51,11 +54,12 @@ scripts/
 - Re-run startup script on a live VM: `sudo google_metadata_script_runner startup`
 
 ## Commands
-- `./scripts/setup.sh` — One-time infrastructure setup
-- `./scripts/start.sh` — Start server, print connection IP
-- `./scripts/stop.sh` — Save and stop server
-- `./scripts/backup.sh` — Download world backup
-- `./scripts/teardown.sh` — Delete all GCP resources
+- `./val setup` — One-time infrastructure setup
+- `./val start` — Start server, wait for ready, print connection IP
+- `./val stop` — Save and stop server
+- `./val update` — Pull latest image + redownload game files (for Valheim patches)
+- `./val backup` — Download world backup
+- `./val teardown` — Delete all GCP resources
 - `docker compose up` — Run locally for testing
 
 ## Style & Conventions
@@ -67,5 +71,5 @@ scripts/
 
 ## Cost Model
 - Stopped: ~$0.40/mo (10GB disk only, free tier may cover it)
-- Running: ~$0.0335/hr (e2-medium) + ~$0.005/hr (ephemeral IP)
-- Typical month (20hrs play): ~$1.17
+- Running: ~$0.0168/hr (e2-small) + ~$0.005/hr (ephemeral IP)
+- Typical month (20hrs play): ~$0.84

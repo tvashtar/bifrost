@@ -11,7 +11,7 @@ A quick-deploy Valheim dedicated server on GCP Compute Engine — cheap to run, 
 | Docker support | Yes (Container-Optimized OS) | Yes | Yes |
 | Persistent storage | Persistent Disk (survives stop) | Volumes | Volumes |
 | CLI management | `gcloud` | `flyctl` | `railway` |
-| **~Cost at 20hrs/mo** | **~$1.17** (ephemeral IP) | ~$3.80-5 | N/A |
+| **~Cost at 20hrs/mo** | **~$0.84** (ephemeral IP) | ~$3.80-5 | N/A |
 
 **Railway** was ruled out (no inbound UDP). **Fly.io** works but costs more due to mandatory dedicated IPv4 ($2/mo) for UDP. GCP Compute Engine is the cheapest option — stopped VMs only bill for disk (~$0.40/mo for 10GB), and ephemeral IPs cost nearly nothing.
 
@@ -19,7 +19,7 @@ A quick-deploy Valheim dedicated server on GCP Compute Engine — cheap to run, 
 
 ```
 ┌──────────────────────────────────────┐
-│     GCP Compute Engine (e2-medium)   │
+│     GCP Compute Engine (e2-small)    │
 │  ┌────────────────────────────────┐  │
 │  │  Container-Optimized OS (COS)  │  │
 │  │  ┌──────────────────────────┐  │  │
@@ -61,7 +61,7 @@ export GCP_PROJECT="your-project-id"
 gcloud config set project $GCP_PROJECT
 
 # Run the setup script (creates VM, firewall rules, disk)
-./scripts/setup.sh
+./val setup
 ```
 
 ### 2. Connect
@@ -69,7 +69,7 @@ gcloud config set project $GCP_PROJECT
 Start the server and wait for it to be ready:
 
 ```bash
-./scripts/start.sh
+./val start
 # Polls server logs and prints the IP when actually ready to accept connections
 ```
 
@@ -79,24 +79,33 @@ In Valheim: **Join Game → Add Server → `<ip>:2456`**
 
 > **Note**: The IP changes each time you start the server (ephemeral). The start script prints it. If you want a fixed IP, see [Static IP](#optional-static-ip) below.
 
-### 3. Stop / Start (save money)
+### 3. Update (after a Valheim patch)
+
+```bash
+./val update
+# Pulls latest Docker image, redownloads game files, waits for ready
+```
+
+World saves are preserved — only the server binary is refreshed.
+
+### 4. Stop / Start (save money)
 
 ```bash
 # Stop the server (only disk billed while stopped — ~$0.40/mo)
-./scripts/stop.sh
+./val stop
 
 # Start it back up for game night
-./scripts/start.sh
+./val start
 ```
 
-### 4. Tear Down Completely
+### 5. Tear Down Completely
 
 ```bash
 # Download your world save first
-./scripts/backup.sh
+./val backup
 
 # Destroy everything
-./scripts/teardown.sh
+./val teardown
 ```
 
 ## Configuration
@@ -126,10 +135,10 @@ For a small friend group playing ~20 hours/month:
 
 | Resource | Cost | Notes |
 |---|---|---|
-| Compute (e2-medium) | ~$0.67 | $0.0335/hr × 20hrs |
+| Compute (e2-small) | ~$0.34 | $0.0168/hr × 20hrs |
 | Persistent Disk (10GB) | ~$0.40 | Billed 24/7, free tier covers it |
 | Ephemeral IP | ~$0.10 | Only while running |
-| **Total** | **~$1.17/mo** | |
+| **Total** | **~$0.84/mo** | |
 
 With a static IP instead: ~$4.72/mo ($3.65/mo for reserved IP).
 
@@ -158,11 +167,14 @@ Connect to `localhost:2456` from Valheim.
 
 ```
 valserver/
+├── val                     # CLI entry point (./val start, ./val stop, etc.)
 ├── docker-compose.yml      # Local development/testing
 ├── scripts/
+│   ├── config.sh           # Shared config (project, zone, VM name, etc.)
 │   ├── setup.sh            # One-time: create VM, firewall, disk
-│   ├── start.sh            # Start VM, print IP
+│   ├── start.sh            # Start VM, wait for ready, print IP
 │   ├── stop.sh             # Graceful save + stop VM
+│   ├── update.sh           # Pull latest image + redownload game files
 │   ├── backup.sh           # Download world save locally
 │   └── teardown.sh         # Destroy all GCP resources
 ├── CLAUDE.md
@@ -175,7 +187,7 @@ valserver/
 - **"Password too short"**: `SERVER_PASS` must be at least 5 characters.
 - **World data lost**: Ensure the persistent disk is mounted and the Docker volume maps to it.
 - **Performance issues**: Resize with `gcloud compute instances set-machine-type valserver --machine-type e2-standard-2`.
-- **IP changed**: Expected with ephemeral IPs. Run `./scripts/start.sh` to see the new one.
+- **IP changed**: Expected with ephemeral IPs. Run `./val start` to see the new one.
 
 ## Sources
 

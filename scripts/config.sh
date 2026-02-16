@@ -7,7 +7,7 @@ ZONE="${GCP_ZONE:-us-east4-c}"
 REGION="${GCP_REGION:-us-east4}"
 
 VM_NAME="valserver"
-MACHINE_TYPE="e2-medium"
+MACHINE_TYPE="e2-small"
 DISK_NAME="valserver-data"
 DISK_SIZE="10"  # GB
 FIREWALL_RULE="valserver-allow-valheim"

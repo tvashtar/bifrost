@@ -12,7 +12,7 @@ echo ""
 read -r -p "Have you backed up your world saves? Type 'yes' to proceed: " confirm
 
 if [ "$confirm" != "yes" ]; then
-  echo "Aborted. Run ./scripts/backup.sh first."
+  echo "Aborted. Run ./val backup first."
   exit 1
 fi
 
