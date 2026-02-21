@@ -2,10 +2,11 @@
 """Minimal local web UI for bifrost."""
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
-from flask import Flask, Response, render_template, jsonify
+from flask import Flask, Response, render_template, jsonify, request
 
 app = Flask(__name__)
 BIFROST_CMD = str(Path(__file__).resolve().parent.parent / "bifrost")
@@ -86,11 +87,89 @@ def action(game, action):
     """Run an action (start/stop/backup) and stream output as SSE."""
     if game not in GAMES:
         return jsonify({"error": "Unknown game"}), 400
-    if action not in ("start", "stop", "backup"):
+    if action not in ("start", "stop", "backup", "update"):
         return jsonify({"error": "Invalid action"}), 400
 
     return Response(
         stream_bifrost(game, action),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def stream_modifiers(game, flags):
+    """Run update-modifiers with flags, auto-confirming the prompt."""
+    cmd = [BIFROST_CMD, f"--game={game}", "update-modifiers"] + flags
+    process = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    # Auto-confirm the "Continue? (y/n)" prompt
+    process.stdin.write("y\n")
+    process.stdin.flush()
+    process.stdin.close()
+
+    for line in process.stdout:
+        yield f"data: {line.rstrip()}\n\n"
+
+    process.wait()
+    success = process.returncode == 0
+    yield f"event: done\ndata: {json.dumps({'success': success})}\n\n"
+
+
+@app.route("/api/<game>/modifiers")
+def get_modifiers(game):
+    """Get current world modifiers via update-modifiers --list."""
+    if game not in GAMES:
+        return jsonify({"error": "Unknown game"}), 400
+
+    try:
+        result = subprocess.run(
+            [BIFROST_CMD, f"--game={game}", "update-modifiers", "--list"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        output = result.stdout + result.stderr
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    modifiers = {}
+    for key in ("combat", "deathpenalty", "resources", "raids", "portals"):
+        match = re.search(rf"(?i){key}:\s*(\S+)", output)
+        if match:
+            val = match.group(1).lower()
+            if val != "default":
+                modifiers[key] = val
+
+    return jsonify(modifiers)
+
+
+@app.route("/api/<game>/update-modifiers", methods=["POST"])
+def update_modifiers(game):
+    """Run update-modifiers with selected modifier flags."""
+    if game not in GAMES:
+        return jsonify({"error": "Unknown game"}), 400
+
+    data = request.get_json() or {}
+    flags = []
+    for key in ("combat", "deathpenalty", "resources", "raids", "portals", "preset"):
+        val = data.get(key)
+        if val:
+            flags.append(f"--{key}={val}")
+
+    if data.get("reset"):
+        flags = ["--reset"]
+
+    if not flags:
+        return jsonify({"error": "No modifiers specified"}), 400
+
+    return Response(
+        stream_modifiers(game, flags),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

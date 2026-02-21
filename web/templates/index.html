@@ -4,43 +4,588 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bifrost</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <style>
+    @keyframes bifrostShimmer {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @keyframes glowPulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      92% { opacity: 1; }
+      93% { opacity: 0.8; }
+      94% { opacity: 1; }
+      96% { opacity: 0.9; }
+      97% { opacity: 1; }
+    }
+    @keyframes borderGlow {
+      0%, 100% { border-color: rgba(0, 255, 200, 0.3); }
+      50% { border-color: rgba(0, 255, 200, 0.6); }
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #eee; max-width: 960px; margin: 0 auto; padding: 24px; }
-    h1 { color: #e94560; margin-bottom: 4px; }
-    .subtitle { color: #888; margin-bottom: 24px; }
-    .games { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
-    .card { background: #16213e; border-radius: 12px; padding: 20px; }
-    .card h2 { margin-bottom: 12px; font-size: 1.2em; }
-    .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 0.8em; font-weight: 600; text-transform: uppercase; }
-    .badge-running { background: #2d6a4f; }
-    .badge-stopped { background: #6c757d; }
-    .badge-not_setup { background: #495057; }
-    .badge-error, .badge-unknown { background: #e63946; }
-    .connect { font-family: monospace; color: #a8dadc; font-size: 0.9em; }
-    .actions { display: flex; gap: 8px; margin-bottom: 12px; }
-    .actions button { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 600; color: white; transition: opacity 0.15s; }
-    .actions button:hover { opacity: 0.85; }
-    .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-start { background: #2d6a4f; }
-    .btn-stop { background: #e63946; }
-    .btn-backup { background: #457b9d; }
+
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: #0a0a0f;
+      color: #c0f0e8;
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 32px 24px;
+      position: relative;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: 3.2em;
+      letter-spacing: 0.15em;
+      background: linear-gradient(
+        90deg,
+        #ff0040, #ff4000, #ff8000, #ffc000,
+        #80ff00, #00ffc8, #0080ff, #4000ff,
+        #8000ff, #ff0080, #ff0040
+      );
+      background-size: 300% 100%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: bifrostShimmer 6s ease infinite, flicker 10s linear infinite;
+      text-shadow: none;
+      filter: drop-shadow(0 0 20px rgba(0, 255, 200, 0.3));
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-family: 'Share Tech Mono', monospace;
+      color: #3a6b60;
+      font-size: 0.85em;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+
+    /* Rainbow divider */
+    .divider {
+      height: 2px;
+      margin: 24px auto;
+      max-width: 600px;
+      background: linear-gradient(
+        90deg,
+        transparent, #ff0040, #ff8000, #ffc000,
+        #00ffc8, #0080ff, #8000ff, transparent
+      );
+      background-size: 200% 100%;
+      animation: bifrostShimmer 4s ease infinite;
+      opacity: 0.6;
+    }
+
+    /* Game cards grid */
+    .games {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: linear-gradient(145deg, #0d1117 0%, #101820 100%);
+      border: 1px solid rgba(0, 255, 200, 0.15);
+      border-radius: 4px;
+      padding: 24px;
+      min-height: 140px;
+      position: relative;
+      overflow: hidden;
+      animation: borderGlow 4s ease infinite;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .card:hover {
+      border-color: rgba(0, 255, 200, 0.5);
+      box-shadow: 0 0 20px rgba(0, 255, 200, 0.1), inset 0 0 30px rgba(0, 255, 200, 0.03);
+    }
+
+    /* Corner accents */
+    .card::before, .card::after {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-color: rgba(0, 255, 200, 0.4);
+      border-style: solid;
+    }
+    .card::before {
+      top: 6px; left: 6px;
+      border-width: 1px 0 0 1px;
+    }
+    .card::after {
+      bottom: 6px; right: 6px;
+      border-width: 0 1px 1px 0;
+    }
+
+    .card-body {
+      position: relative;
+      z-index: 1;
+    }
+
+    .card-art {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .card-art img {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      min-height: 100%;
+      object-fit: cover;
+      opacity: 0.3;
+      filter: saturate(0.6) brightness(0.8);
+      transition: opacity 0.4s, filter 0.4s;
+    }
+
+    .card:hover .card-art img {
+      opacity: 0.4;
+      filter: saturate(0.8) brightness(1);
+    }
+
+    .card h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: 1.1em;
+      letter-spacing: 0.1em;
+      color: #e0fff8;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 12px;
+      border-radius: 2px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75em;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      border: 1px solid;
+      background: rgba(10, 10, 15, 0.7);
+    }
+
+    .badge-running {
+      background: rgba(10, 10, 15, 0.7);
+      border-color: #00ff88;
+      color: #00ff88;
+      animation: glowPulse 2s ease infinite;
+    }
+    .badge-stopped {
+      background: rgba(10, 10, 15, 0.7);
+      border-color: #ff8c00;
+      color: #ff8c00;
+    }
+    .badge-not_setup {
+      background: rgba(10, 10, 15, 0.7);
+      border-color: #555570;
+      color: #555570;
+    }
+    .badge-launching {
+      background: rgba(10, 10, 15, 0.7);
+      border-color: #ffc000;
+      color: #ffc000;
+      animation: glowPulse 1s ease infinite;
+    }
+    .badge-error, .badge-unknown {
+      background: rgba(10, 10, 15, 0.7);
+      border-color: #ff003c;
+      color: #ff003c;
+    }
+
+    .connect {
+      font-family: 'Share Tech Mono', monospace;
+      color: #00ffc8;
+      font-size: 0.85em;
+    }
+
+    .btn-copy {
+      background: none;
+      border: none;
+      color: #00ffc8;
+      cursor: pointer;
+      padding: 0 4px;
+      font-size: 0.85em;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+      vertical-align: middle;
+    }
+    .btn-copy:hover { opacity: 1; }
+    .btn-copy.copied { color: #00ff88; opacity: 1; }
+
+    /* Buttons */
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .actions button {
+      padding: 8px 20px;
+      border: 1px solid;
+      border-radius: 2px;
+      cursor: pointer;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7em;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: white;
+      background: rgba(10, 10, 15, 0.7);
+      position: relative;
+      transition: all 0.2s;
+    }
+
+    .actions button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    .actions button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .btn-start {
+      border-color: #00ff88;
+      color: #00ff88;
+      background: rgba(0, 255, 136, 0.08);
+    }
+    .btn-start:hover:not(:disabled) {
+      background: rgba(0, 255, 136, 0.2);
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+    }
+
+    .btn-stop {
+      border-color: #ff003c;
+      color: #ff003c;
+      background: rgba(255, 0, 60, 0.08);
+    }
+    .btn-stop:hover:not(:disabled) {
+      background: rgba(255, 0, 60, 0.2);
+      box-shadow: 0 0 15px rgba(255, 0, 60, 0.3);
+    }
+
+    .btn-backup {
+      border-color: #0080ff;
+      color: #0080ff;
+      background: rgba(0, 128, 255, 0.08);
+    }
+    .btn-backup:hover:not(:disabled) {
+      background: rgba(0, 128, 255, 0.2);
+      box-shadow: 0 0 15px rgba(0, 128, 255, 0.3);
+    }
+
+    /* Log output */
     .log-wrap { display: none; }
     .log-wrap.active { display: block; }
-    .output { background: #0f0f23; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.78em; white-space: pre-wrap; overflow-y: auto; line-height: 1.4; color: #ccc; }
+
+    .output {
+      background: #050508;
+      padding: 14px;
+      border-radius: 2px;
+      border: 1px solid rgba(0, 255, 200, 0.1);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75em;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      line-height: 1.5;
+      color: #5a9a8a;
+    }
     .output.collapsed { max-height: 7.8em; }
     .output.expanded { max-height: 400px; }
-    .log-toggle { display: none; background: none; border: none; color: #457b9d; cursor: pointer; font-size: 0.75em; padding: 4px 0; margin-top: 4px; }
-    .log-toggle:hover { color: #a8dadc; }
-    .streaming .output::after { content: " \25CF"; animation: pulse 1s infinite; color: #2d6a4f; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    .log-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: #0080ff;
+      cursor: pointer;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72em;
+      padding: 6px 0;
+      margin-top: 4px;
+      letter-spacing: 0.05em;
+    }
+    .log-toggle:hover { color: #00ffc8; }
+
+    .streaming .output::after {
+      content: " \25CF";
+      animation: pulse 1s infinite;
+      color: #00ff88;
+    }
+
+    /* Dropdown */
+    .dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .btn-other {
+      border-color: #555570;
+      color: #888;
+    }
+    .btn-other:hover:not(:disabled) {
+      background: rgba(85, 85, 112, 0.2);
+      box-shadow: 0 0 15px rgba(85, 85, 112, 0.3);
+    }
+    .dropdown-menu {
+      display: none;
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      margin-bottom: 4px;
+      background: #0d1117;
+      border: 1px solid rgba(0, 255, 200, 0.3);
+      border-radius: 2px;
+      min-width: 160px;
+      z-index: 10;
+    }
+    .dropdown-menu.open { display: block; }
+    .dropdown-menu button {
+      display: block;
+      width: 100%;
+      padding: 8px 16px;
+      border: none;
+      background: none;
+      color: #c0f0e8;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8em;
+      text-align: left;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+    }
+    .dropdown-menu button:hover {
+      background: rgba(0, 255, 200, 0.1);
+    }
+
+    /* Modal overlay */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+    .modal {
+      background: #0d1117;
+      border: 1px solid rgba(0, 255, 200, 0.3);
+      border-radius: 4px;
+      padding: 28px;
+      max-width: 480px;
+      width: 90%;
+      position: relative;
+    }
+    .modal h3 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1em;
+      letter-spacing: 0.1em;
+      color: #e0fff8;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+    .modal p {
+      font-size: 0.85em;
+      color: #8aaa9e;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .modal-warning {
+      color: #ffc000 !important;
+      border-left: 2px solid #ffc000;
+      padding-left: 12px;
+      margin-bottom: 20px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    .modal-actions button {
+      padding: 8px 20px;
+      border: 1px solid;
+      border-radius: 2px;
+      cursor: pointer;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7em;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: rgba(10, 10, 15, 0.7);
+      transition: all 0.2s;
+    }
+    .modal-cancel {
+      border-color: #555570;
+      color: #888;
+    }
+    .modal-cancel:hover { background: rgba(85, 85, 112, 0.2); }
+    .modal-confirm {
+      border-color: #ffc000;
+      color: #ffc000;
+    }
+    .modal-confirm:hover {
+      background: rgba(255, 192, 0, 0.15);
+      box-shadow: 0 0 15px rgba(255, 192, 0, 0.2);
+    }
+
+    /* Modifier form */
+    .mod-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      gap: 12px;
+    }
+    .mod-row label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8em;
+      color: #c0f0e8;
+      letter-spacing: 0.05em;
+      min-width: 110px;
+    }
+    .mod-row select {
+      flex: 1;
+      padding: 6px 10px;
+      background: #050508;
+      border: 1px solid rgba(0, 255, 200, 0.2);
+      border-radius: 2px;
+      color: #c0f0e8;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8em;
+      cursor: pointer;
+    }
+    .mod-row select:focus {
+      outline: none;
+      border-color: rgba(0, 255, 200, 0.5);
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 48px;
+      padding: 20px 0;
+      border-top: 1px solid rgba(0, 255, 200, 0.08);
+      color: #3a5a50;
+      font-size: 0.7em;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      animation: textFuzz 4s ease infinite;
+    }
+
+    @keyframes textFuzz {
+      0%, 85% { filter: blur(0px); opacity: 1; }
+      88% { filter: blur(2px); opacity: 0.6; }
+      90% { filter: blur(3px); opacity: 0.4; }
+      91% { filter: blur(1px); opacity: 0.8; }
+      92% { filter: blur(4px); opacity: 0.3; }
+      94% { filter: blur(0px); opacity: 1; }
+      100% { filter: blur(0px); opacity: 1; }
+    }
+
+    @media (max-width: 500px) {
+      .games { grid-template-columns: 1fr; }
+      .logo { font-size: 2em; }
+    }
   </style>
 </head>
 <body>
-  <h1>Bifrost</h1>
-  <p class="subtitle">Game server manager</p>
-  <div class="games" id="games"></div>
+  <div class="container">
+    <div class="header">
+      <div class="logo">BIFROST</div>
+      <p class="subtitle">Game Server Control System</p>
+      <div class="divider"></div>
+    </div>
+    <div class="games" id="games"></div>
+    <div class="footer">SYS.ONLINE // BIFROST GATEWAY v1.0</div>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div class="modal-overlay" id="confirm-overlay">
+    <div class="modal">
+      <h3 id="confirm-title">Confirm</h3>
+      <p class="modal-warning" id="confirm-msg"></p>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="closeConfirm()">Cancel</button>
+        <button class="modal-confirm" id="confirm-btn" onclick="doConfirm()">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modifiers modal -->
+  <div class="modal-overlay" id="mod-overlay">
+    <div class="modal">
+      <h3>World Modifiers</h3>
+      <p>Valheim difficulty settings. Current server values are pre-selected. <a href="https://valheim.fandom.com/wiki/World_Modifiers" target="_blank" rel="noopener" style="color:#00ffc8;">Reference &rarr;</a></p>
+      <div id="mod-form">
+        <div class="mod-row">
+          <label>Preset</label>
+          <select id="mod-preset"><option value="">-- none --</option><option>casual</option><option>easy</option><option>hard</option><option>hardcore</option><option>immersive</option><option>hammer</option></select>
+        </div>
+        <div class="mod-row">
+          <label>Combat</label>
+          <select id="mod-combat"><option>veryeasy</option><option>easy</option><option value="">default</option><option>hard</option><option>veryhard</option></select>
+        </div>
+        <div class="mod-row">
+          <label>Death Penalty</label>
+          <select id="mod-deathpenalty"><option>casual</option><option>veryeasy</option><option>easy</option><option value="">default</option><option>hard</option><option>hardcore</option></select>
+        </div>
+        <div class="mod-row">
+          <label>Resources</label>
+          <select id="mod-resources"><option>muchless</option><option>less</option><option value="">default</option><option>more</option><option>muchmore</option><option>most</option></select>
+        </div>
+        <div class="mod-row">
+          <label>Raids</label>
+          <select id="mod-raids"><option>none</option><option>muchless</option><option>less</option><option value="">default</option><option>more</option><option>muchmore</option></select>
+        </div>
+        <div class="mod-row">
+          <label>Portals</label>
+          <select id="mod-portals"><option>casual</option><option value="">default</option><option>hard</option><option>veryhard</option></select>
+        </div>
+      </div>
+      <p class="modal-warning">This will stop the server, rebuild the container, and restart. It can take several minutes.</p>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="closeMod()">Cancel</button>
+        <button class="modal-confirm" onclick="applyMod()">Apply</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const GAMES = {{ games | tojson }};
@@ -51,22 +596,44 @@
       enshrouded: "Enshrouded"
     };
 
+    const activeActions = new Set();
+
+    const ART = {
+      valheim: "/static/valheim.jpg",
+      minecraft: "/static/minecraft.png",
+      "7dtd": "/static/7dtd.jpg",
+      enshrouded: "/static/enshrouded.jpg"
+    };
+
     function card(g) {
       return `
         <div class="card" id="card-${g}">
-          <h2>${DISPLAY[g]}</h2>
-          <div class="status-row">
-            <span class="badge badge-unknown" id="badge-${g}">...</span>
-            <span class="connect" id="connect-${g}"></span>
-          </div>
-          <div class="actions">
-            <button class="btn-start" id="btn-start-${g}" onclick="act('${g}','start')">Start</button>
-            <button class="btn-stop" id="btn-stop-${g}" onclick="act('${g}','stop')">Stop</button>
-            <button class="btn-backup" id="btn-backup-${g}" onclick="act('${g}','backup')">Backup</button>
-          </div>
-          <div class="log-wrap" id="log-wrap-${g}">
-            <div class="output collapsed" id="out-${g}"></div>
-            <button class="log-toggle" id="toggle-${g}" onclick="toggleLog('${g}')">Show full log</button>
+          <div class="card-art"><img src="${ART[g]}" alt=""></div>
+          <div class="card-body">
+            <h2>${DISPLAY[g]}</h2>
+            <div class="status-row">
+              <span class="badge badge-unknown" id="badge-${g}">...</span>
+              <span class="connect" id="connect-${g}"></span>
+              <button class="btn-copy" id="copy-${g}" onclick="copyAddr('${g}')" style="display:none" title="Copy to clipboard">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+            </div>
+            <div class="actions">
+              <button class="btn-start" id="btn-start-${g}" onclick="act('${g}','start')">Start</button>
+              <button class="btn-stop" id="btn-stop-${g}" onclick="act('${g}','stop')">Stop</button>
+              <button class="btn-backup" id="btn-backup-${g}" onclick="act('${g}','backup')">Backup</button>
+              <div class="dropdown" id="dd-${g}">
+                <button class="btn-other" onclick="toggleDD('${g}')">Other</button>
+                <div class="dropdown-menu" id="ddm-${g}">
+                  <button onclick="confirmUpdate('${g}')">Update Server</button>
+                  ${g === "valheim" ? '<button onclick="openMod()">Modifiers</button>' : ""}
+                </div>
+              </div>
+            </div>
+            <div class="log-wrap" id="log-wrap-${g}">
+              <div class="output collapsed" id="out-${g}"></div>
+              <button class="log-toggle" id="toggle-${g}" onclick="toggleLog('${g}')">[ show full log ]</button>
+            </div>
           </div>
         </div>`;
     }
@@ -78,10 +645,10 @@
       const btn = document.getElementById(`toggle-${g}`);
       if (out.classList.contains("collapsed")) {
         out.classList.replace("collapsed", "expanded");
-        btn.textContent = "Collapse";
+        btn.textContent = "[ collapse ]";
       } else {
         out.classList.replace("expanded", "collapsed");
-        btn.textContent = "Show full log";
+        btn.textContent = "[ show full log ]";
         out.scrollTop = out.scrollHeight;
       }
     }
@@ -91,17 +658,31 @@
         const r = await fetch("/api/status");
         const data = await r.json();
         for (const [g, info] of Object.entries(data)) {
+          if (activeActions.has(g)) continue;
           const b = document.getElementById(`badge-${g}`);
           const s = info.status || "unknown";
           b.textContent = s === "not_setup" ? "not set up" : s;
           b.className = `badge badge-${s}`;
           const c = document.getElementById(`connect-${g}`);
-          c.textContent = info.ip && info.port ? `${info.ip}:${info.port}` : "";
+          const cp = document.getElementById(`copy-${g}`);
+          const addr = info.ip && info.port ? `${info.ip}:${info.port}` : "";
+          c.textContent = addr;
+          cp.style.display = addr ? "inline" : "none";
         }
       } catch (e) { console.error("Status refresh failed:", e); }
     }
 
+    async function copyAddr(g) {
+      const c = document.getElementById(`connect-${g}`);
+      const cp = document.getElementById(`copy-${g}`);
+      if (!c.textContent) return;
+      await navigator.clipboard.writeText(c.textContent);
+      cp.classList.add("copied");
+      setTimeout(() => cp.classList.remove("copied"), 1500);
+    }
+
     async function act(g, action) {
+      activeActions.add(g);
       const btns = document.querySelectorAll(`#card-${g} button`);
       btns.forEach(b => b.disabled = true);
 
@@ -109,12 +690,18 @@
       const out = document.getElementById(`out-${g}`);
       const toggle = document.getElementById(`toggle-${g}`);
 
+      if (action === "start") {
+        const b = document.getElementById(`badge-${g}`);
+        b.textContent = "launching";
+        b.className = "badge badge-launching";
+      }
+
       wrap.classList.add("active");
       wrap.classList.add("streaming");
       out.textContent = "";
       out.classList.replace("expanded", "collapsed");
       toggle.style.display = "none";
-      toggle.textContent = "Show full log";
+      toggle.textContent = "[ show full log ]";
 
       let lineCount = 0;
 
@@ -134,7 +721,6 @@
 
           for (const part of parts) {
             if (part.startsWith("event: done")) {
-              // done event — stream finished
               continue;
             }
             const match = part.match(/^data: (.*)$/m);
@@ -154,8 +740,127 @@
 
       wrap.classList.remove("streaming");
       btns.forEach(b => b.disabled = false);
+      activeActions.delete(g);
       refresh();
     }
+
+    // Dropdown
+    function toggleDD(g) {
+      const menu = document.getElementById(`ddm-${g}`);
+      const wasOpen = menu.classList.contains("open");
+      document.querySelectorAll(".dropdown-menu").forEach(m => m.classList.remove("open"));
+      if (!wasOpen) menu.classList.add("open");
+    }
+    document.addEventListener("click", e => {
+      if (!e.target.closest(".dropdown")) {
+        document.querySelectorAll(".dropdown-menu").forEach(m => m.classList.remove("open"));
+      }
+    });
+
+    // Confirm dialog
+    let pendingConfirm = null;
+    function confirmUpdate(g) {
+      document.querySelectorAll(".dropdown-menu").forEach(m => m.classList.remove("open"));
+      document.getElementById("confirm-title").textContent = `Update ${DISPLAY[g]}`;
+      document.getElementById("confirm-msg").textContent =
+        "This will pull the latest server image and rebuild the container. The server will be unavailable during this process, which can take several minutes.";
+      document.getElementById("confirm-overlay").classList.add("open");
+      pendingConfirm = () => { closeConfirm(); act(g, "update"); };
+    }
+    function doConfirm() { if (pendingConfirm) pendingConfirm(); }
+    function closeConfirm() {
+      document.getElementById("confirm-overlay").classList.remove("open");
+      pendingConfirm = null;
+    }
+
+    // Modifiers modal
+    let modGame = "valheim";
+    async function openMod() {
+      document.querySelectorAll(".dropdown-menu").forEach(m => m.classList.remove("open"));
+      document.querySelectorAll("#mod-form select").forEach(s => s.value = "");
+      document.getElementById("mod-overlay").classList.add("open");
+
+      try {
+        const r = await fetch(`/api/${modGame}/modifiers`);
+        const data = await r.json();
+        for (const [key, val] of Object.entries(data)) {
+          const sel = document.getElementById(`mod-${key}`);
+          if (sel) {
+            const opt = Array.from(sel.options).find(o => o.value === val);
+            if (opt) sel.value = val;
+          }
+        }
+      } catch (e) { /* ignore - dropdowns stay at default */ }
+    }
+    function closeMod() {
+      document.getElementById("mod-overlay").classList.remove("open");
+    }
+    async function applyMod() {
+      const body = {};
+      ["preset", "combat", "deathpenalty", "resources", "raids", "portals"].forEach(k => {
+        const v = document.getElementById(`mod-${k}`).value;
+        if (v) body[k] = v;
+      });
+      if (Object.keys(body).length === 0) return;
+      closeMod();
+
+      const g = modGame;
+      activeActions.add(g);
+      const btns = document.querySelectorAll(`#card-${g} button`);
+      btns.forEach(b => b.disabled = true);
+      const wrap = document.getElementById(`log-wrap-${g}`);
+      const out = document.getElementById(`out-${g}`);
+      const toggle = document.getElementById(`toggle-${g}`);
+
+      wrap.classList.add("active");
+      wrap.classList.add("streaming");
+      out.textContent = "";
+      out.classList.replace("expanded", "collapsed");
+      toggle.style.display = "none";
+
+      let lineCount = 0;
+      try {
+        const r = await fetch(`/api/${g}/update-modifiers`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(body)
+        });
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop();
+          for (const part of parts) {
+            if (part.startsWith("event: done")) continue;
+            const match = part.match(/^data: (.*)$/m);
+            if (match) {
+              out.textContent += match[1] + "\n";
+              lineCount++;
+              if (lineCount > 5) toggle.style.display = "inline-block";
+              out.scrollTop = out.scrollHeight;
+            }
+          }
+        }
+      } catch (e) {
+        out.textContent += `\nError: ${e}\n`;
+      }
+
+      wrap.classList.remove("streaming");
+      btns.forEach(b => b.disabled = false);
+      activeActions.delete(g);
+      refresh();
+    }
+
+    // Close modals on overlay click
+    document.querySelectorAll(".modal-overlay").forEach(ov => {
+      ov.addEventListener("click", e => {
+        if (e.target === ov) ov.classList.remove("open");
+      });
+    });
 
     refresh();
     setInterval(refresh, 30000);
