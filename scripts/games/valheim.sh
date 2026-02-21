@@ -59,6 +59,7 @@ game_docker_env_flags() {
   echo " -e WORLD_NAME=\"$WORLD_NAME\""
   echo " -e SERVER_PUBLIC=\"$SERVER_PUBLIC\""
   echo " -e BACKUPS_CRON=\"*/15 * * * *\""
+  echo " -e BACKUPS_MAX_COUNT=5"
   [ -n "$MODIFIER_COMBAT" ]       && echo " -e MODIFIER_COMBAT=\"$MODIFIER_COMBAT\""
   [ -n "$MODIFIER_DEATHPENALTY" ] && echo " -e MODIFIER_DEATHPENALTY=\"$MODIFIER_DEATHPENALTY\""
   [ -n "$MODIFIER_RESOURCES" ]    && echo " -e MODIFIER_RESOURCES=\"$MODIFIER_RESOURCES\""

@@ -59,6 +59,11 @@ if ! blkid "\$DATA_DEV" &>/dev/null; then
   mkfs.ext4 -m 0 -F -E lazy_itable_init=0 "\$DATA_DEV"
 fi
 
+# Stop container if auto-restarted before disk is mounted (race condition)
+if docker container inspect ${GAME_CONTAINER_NAME} &>/dev/null; then
+  docker stop ${GAME_CONTAINER_NAME} 2>/dev/null || true
+fi
+
 # Mount the data disk
 mkdir -p "\$DATA_MNT"
 mount -o discard,defaults "\$DATA_DEV" "\$DATA_MNT" || true

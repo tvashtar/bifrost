@@ -13,23 +13,22 @@ fi
 BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/../backups}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-# Build backup filename — for Valheim, include world name
+# Build backup filename — for Valheim, include world name from VM metadata
 if [ "$GAME_ID" = "valheim" ]; then
-  echo "==> Fetching world name from server..."
-  WORLD_NAME=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-    "docker inspect $GAME_CONTAINER_NAME --format='{{range .Config.Env}}{{println .}}{{end}}'" 2>/dev/null \
-    | grep '^WORLD_NAME=' | cut -d= -f2 || echo "Dedicated")
-  WORLD_NAME="${WORLD_NAME:-Dedicated}"
-  BACKUP_FILE="${GAME_ID}-${WORLD_NAME}-${TIMESTAMP}.tar.gz"
+  WORLD=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
+    --format='get(metadata.items[0].value)' 2>/dev/null \
+    | grep -oP 'WORLD_NAME="\K[^"]+' || true)
+  BACKUP_FILE="${GAME_ID}-${WORLD:-Dedicated}-${TIMESTAMP}.tar.gz"
 else
   BACKUP_FILE="${GAME_ID}-${TIMESTAMP}.tar.gz"
 fi
 
 mkdir -p "$BACKUP_DIR"
 
-echo "==> Streaming backup from server (tar on remote, gzip locally)..."
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  "sudo tar cf - -C ${GAME_DATA_MOUNT}/ ." \
+REMOTE_PATH="${GAME_DATA_MOUNT}/${GAME_WORLD_SUBDIR}"
+echo "==> Streaming backup of $REMOTE_PATH from server..."
+gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --ssh-flag="-T" -- \
+  "sudo tar cf - -C ${REMOTE_PATH}/ --exclude='*_backup_*' --exclude='*.old' ." \
   | gzip > "$BACKUP_DIR/$BACKUP_FILE"
 
 echo ""
