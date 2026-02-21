@@ -27,7 +27,7 @@ Stopped VMs only bill for disk (~$0.40/mo for 10GB). Ephemeral IPs cost nearly n
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated
 - A GCP project with billing enabled
 - Docker (for local testing only)
-- Python 3 + Flask (for web UI only)
+- [uv](https://docs.astral.sh/uv/) (for web UI only)
 
 ## Quick Start
 
@@ -84,8 +84,7 @@ A basic local web UI for managing all game servers:
 
 ```bash
 cd web
-pip install -r requirements.txt
-python app.py
+uv run app.py
 # Open http://localhost:5000
 ```
 

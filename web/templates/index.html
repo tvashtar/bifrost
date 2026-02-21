@@ -26,7 +26,15 @@
     .btn-start { background: #2d6a4f; }
     .btn-stop { background: #e63946; }
     .btn-backup { background: #457b9d; }
-    .output { background: #0f0f23; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.78em; white-space: pre-wrap; max-height: 220px; overflow-y: auto; display: none; line-height: 1.4; color: #ccc; }
+    .log-wrap { display: none; }
+    .log-wrap.active { display: block; }
+    .output { background: #0f0f23; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.78em; white-space: pre-wrap; overflow-y: auto; line-height: 1.4; color: #ccc; }
+    .output.collapsed { max-height: 7.8em; }
+    .output.expanded { max-height: 400px; }
+    .log-toggle { display: none; background: none; border: none; color: #457b9d; cursor: pointer; font-size: 0.75em; padding: 4px 0; margin-top: 4px; }
+    .log-toggle:hover { color: #a8dadc; }
+    .streaming .output::after { content: " \25CF"; animation: pulse 1s infinite; color: #2d6a4f; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
   </style>
 </head>
 <body>
@@ -56,11 +64,27 @@
             <button class="btn-stop" id="btn-stop-${g}" onclick="act('${g}','stop')">Stop</button>
             <button class="btn-backup" id="btn-backup-${g}" onclick="act('${g}','backup')">Backup</button>
           </div>
-          <div class="output" id="out-${g}"></div>
+          <div class="log-wrap" id="log-wrap-${g}">
+            <div class="output collapsed" id="out-${g}"></div>
+            <button class="log-toggle" id="toggle-${g}" onclick="toggleLog('${g}')">Show full log</button>
+          </div>
         </div>`;
     }
 
     document.getElementById("games").innerHTML = GAMES.map(card).join("");
+
+    function toggleLog(g) {
+      const out = document.getElementById(`out-${g}`);
+      const btn = document.getElementById(`toggle-${g}`);
+      if (out.classList.contains("collapsed")) {
+        out.classList.replace("collapsed", "expanded");
+        btn.textContent = "Collapse";
+      } else {
+        out.classList.replace("expanded", "collapsed");
+        btn.textContent = "Show full log";
+        out.scrollTop = out.scrollHeight;
+      }
+    }
 
     async function refresh() {
       try {
@@ -80,16 +104,55 @@
     async function act(g, action) {
       const btns = document.querySelectorAll(`#card-${g} button`);
       btns.forEach(b => b.disabled = true);
+
+      const wrap = document.getElementById(`log-wrap-${g}`);
       const out = document.getElementById(`out-${g}`);
-      out.style.display = "block";
-      out.textContent = `Running ${action}...\n`;
+      const toggle = document.getElementById(`toggle-${g}`);
+
+      wrap.classList.add("active");
+      wrap.classList.add("streaming");
+      out.textContent = "";
+      out.classList.replace("expanded", "collapsed");
+      toggle.style.display = "none";
+      toggle.textContent = "Show full log";
+
+      let lineCount = 0;
+
       try {
         const r = await fetch(`/api/${g}/${action}`, { method: "POST" });
-        const data = await r.json();
-        out.textContent = data.output || (data.success ? "Done." : "Failed.");
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            if (part.startsWith("event: done")) {
+              // done event — stream finished
+              continue;
+            }
+            const match = part.match(/^data: (.*)$/m);
+            if (match) {
+              out.textContent += match[1] + "\n";
+              lineCount++;
+              if (lineCount > 5) {
+                toggle.style.display = "inline-block";
+              }
+              out.scrollTop = out.scrollHeight;
+            }
+          }
+        }
       } catch (e) {
-        out.textContent = `Error: ${e}`;
+        out.textContent += `\nError: ${e}\n`;
       }
+
+      wrap.classList.remove("streaming");
       btns.forEach(b => b.disabled = false);
       refresh();
     }

@@ -3,21 +3,20 @@
 
 import json
 import subprocess
-import os
 from pathlib import Path
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, Response, render_template, jsonify
 
 app = Flask(__name__)
-VAL_CMD = str(Path(__file__).resolve().parent.parent / "bifrost")
+BIFROST_CMD = str(Path(__file__).resolve().parent.parent / "bifrost")
 GAMES = ["valheim", "minecraft", "7dtd", "enshrouded"]
 
 
-def run_val(game, command, timeout=30):
-    """Run a val CLI command and return (success, output)."""
+def run_bifrost(game, command, timeout=30):
+    """Run a bifrost CLI command and return (success, output)."""
     try:
         result = subprocess.run(
-            [VAL_CMD, f"--game={game}", command],
+            [BIFROST_CMD, f"--game={game}", command],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -27,6 +26,24 @@ def run_val(game, command, timeout=30):
         return False, "Command timed out"
     except Exception as e:
         return False, str(e)
+
+
+def stream_bifrost(game, action):
+    """Run a bifrost CLI command and yield output as SSE lines."""
+    process = subprocess.Popen(
+        [BIFROST_CMD, f"--game={game}", action],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    for line in process.stdout:
+        yield f"data: {line.rstrip()}\n\n"
+
+    process.wait()
+    success = process.returncode == 0
+    yield f"event: done\ndata: {json.dumps({'success': success})}\n\n"
 
 
 @app.route("/")
@@ -39,7 +56,7 @@ def status(game):
     """Get server status for a game."""
     if game not in GAMES:
         return jsonify({"error": "Unknown game"}), 400
-    success, output = run_val(game, "status")
+    success, output = run_bifrost(game, "status")
     if success:
         try:
             return jsonify(json.loads(output.strip()))
@@ -53,7 +70,7 @@ def status_all():
     """Get status for all games."""
     results = {}
     for game in GAMES:
-        success, output = run_val(game, "status")
+        success, output = run_bifrost(game, "status")
         if success:
             try:
                 results[game] = json.loads(output.strip())
@@ -66,16 +83,17 @@ def status_all():
 
 @app.route("/api/<game>/<action>", methods=["POST"])
 def action(game, action):
-    """Run an action (start/stop/backup) for a game."""
+    """Run an action (start/stop/backup) and stream output as SSE."""
     if game not in GAMES:
         return jsonify({"error": "Unknown game"}), 400
     if action not in ("start", "stop", "backup"):
         return jsonify({"error": "Invalid action"}), 400
 
-    # Start can take a long time (first boot downloads game files)
-    timeout = 900 if action == "start" else 120
-    success, output = run_val(game, action, timeout=timeout)
-    return jsonify({"success": success, "output": output})
+    return Response(
+        stream_bifrost(game, action),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 if __name__ == "__main__":

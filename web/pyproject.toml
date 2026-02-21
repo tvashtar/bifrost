@@ -1,0 +1,8 @@
+[project]
+name = "bifrost-web"
+version = "0.1.0"
+description = "Local web UI for bifrost game server manager"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+]

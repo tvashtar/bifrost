@@ -4,6 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
+STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(status)' 2>/dev/null) || true
+if [ "$STATUS" != "RUNNING" ]; then
+  echo "ERROR: $GAME_DISPLAY_NAME server is not running (${STATUS:-not found}). Start it first to create a backup."
+  exit 1
+fi
+
 BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/../backups}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
@@ -21,17 +27,10 @@ fi
 
 mkdir -p "$BACKUP_DIR"
 
-echo "==> Creating backup archive on server..."
+echo "==> Streaming backup from server (tar on remote, gzip locally)..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  "sudo tar czf /tmp/${GAME_ID}-backup.tar.gz -C ${GAME_DATA_MOUNT}/ ."
-
-echo "==> Downloading backup..."
-gcloud compute scp "$VM_NAME:/tmp/${GAME_ID}-backup.tar.gz" "$BACKUP_DIR/$BACKUP_FILE" \
-  --zone="$ZONE" --quiet
-
-echo "==> Cleaning up remote temp file..."
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  "sudo rm -f /tmp/${GAME_ID}-backup.tar.gz"
+  "sudo tar cf - -C ${GAME_DATA_MOUNT}/ ." \
+  | gzip > "$BACKUP_DIR/$BACKUP_FILE"
 
 echo ""
 echo "==> Backup saved to $BACKUP_DIR/$BACKUP_FILE"

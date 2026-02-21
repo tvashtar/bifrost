@@ -8,7 +8,7 @@ Multi-game dedicated server manager on GCP Compute Engine using Docker. Supports
 - **Docker**: Game-specific server images (one container per VM)
 - **gcloud CLI**: All infrastructure management
 - **Bash scripts**: Core engine for setup/start/stop/backup/teardown
-- **Flask**: Optional local web UI at localhost:5000
+- **Flask + uv**: Optional local web UI at localhost:5000
 
 ## Supported Games
 
@@ -81,7 +81,7 @@ docs/
 web/
   app.py                         — Flask web UI backend
   templates/index.html           — Single-page web UI
-  requirements.txt               — Python dependencies (flask)
+  pyproject.toml                 — Python dependencies (uv)
 ```
 
 ## .env File
@@ -138,7 +138,7 @@ Local testing with Docker Compose:
 - `docker compose --profile minecraft up`
 
 Web UI:
-- `cd web && pip install -r requirements.txt && python app.py`
+- `cd web && uv run app.py`
 - Open `http://localhost:5000`
 
 ## Style & Conventions
