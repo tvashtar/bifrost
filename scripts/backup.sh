@@ -14,11 +14,15 @@ BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/../backups}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 # Build backup filename — for Valheim, include world name from VM metadata
+WORLD=""
 if [ "$GAME_ID" = "valheim" ]; then
   WORLD=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
-    --format='get(metadata.items[0].value)' 2>/dev/null \
+    --format='value(metadata.items[startup-script])' 2>/dev/null \
     | grep -oP 'WORLD_NAME="\K[^"]+' || true)
-  BACKUP_FILE="${GAME_ID}-${WORLD:-Dedicated}-${TIMESTAMP}.tar.gz"
+fi
+
+if [ -n "$WORLD" ]; then
+  BACKUP_FILE="${GAME_ID}-${WORLD}-${TIMESTAMP}.tar.gz"
 else
   BACKUP_FILE="${GAME_ID}-${TIMESTAMP}.tar.gz"
 fi
