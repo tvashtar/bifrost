@@ -80,7 +80,7 @@ Valheim-only commands:
 
 ## Web UI
 
-A basic local web UI for managing all game servers:
+A local web UI for managing all game servers:
 
 ```bash
 cd web
@@ -88,7 +88,7 @@ uv run app.py
 # Open http://localhost:5000
 ```
 
-Shows status, start/stop/backup buttons for all 4 games in a dark-themed dashboard.
+![Bifrost Web UI](docs/demo.gif)
 
 ## Local Testing
 
