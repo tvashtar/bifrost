@@ -1,42 +1,82 @@
-# CLAUDE.md — valserver
+# CLAUDE.md — bifrost
 
 ## Project Overview
-Valheim dedicated server on GCP Compute Engine using Docker. Designed for cheap pay-per-use hosting with easy stop/start for casual play sessions.
+Multi-game dedicated server manager on GCP Compute Engine using Docker. Supports Valheim, Minecraft, 7 Days to Die, and Enshrouded. Designed for cheap pay-per-use hosting with easy stop/start for casual play sessions.
 
 ## Tech Stack
-- **GCP Compute Engine**: e2-small VM with Container-Optimized OS (COS)
-- **Docker**: `lloesche/valheim-server-docker` image (pin to specific tag)
+- **GCP Compute Engine**: e2-small/e2-medium VMs with Container-Optimized OS (COS)
+- **Docker**: Game-specific server images (one container per VM)
 - **gcloud CLI**: All infrastructure management
-- **Bash scripts**: Convenience wrappers for setup/start/stop/backup/teardown
+- **Bash scripts**: Core engine for setup/start/stop/backup/teardown
+- **Flask**: Optional local web UI at localhost:5000
+
+## Supported Games
+
+| Game | Docker Image | Ports | Default VM | Ready Signal |
+|------|-------------|-------|-----------|--------------|
+| Valheim | `lloesche/valheim-server` | UDP 2456-2458 | e2-small | `Registering lobby` |
+| Minecraft | `itzg/minecraft-server` | TCP 25565 | e2-small | `Done (` |
+| 7 Days to Die | `vinanrra/7dtd-server` | UDP 26900-26902, TCP 26900 | e2-medium | `GameServer.Init successful` |
+| Enshrouded | `mornedhels/enshrouded-server` | UDP 15636-15637 | e2-medium | `HostOnline` |
+
+**7DTD and Enshrouded require e2-medium (4GB RAM).** Setup will auto-upgrade from e2-small with a warning. Set `FORCE_SMALL=1` to override.
 
 ## Key Decisions
 - **GCP over Fly.io**: Cheaper (~$0.84/mo vs ~$4/mo) because stopped VMs only bill for disk, and ephemeral IPs are nearly free
 - **GCP over Railway**: Railway has no inbound UDP support (Valheim requires UDP 2456-2457)
 - **Ephemeral IP by default**: Saves ~$3.50/mo vs static IP. IP changes on restart but start script prints it
 - **Container-Optimized OS**: Preinstalled Docker, minimal attack surface, auto-updates
-- **lloesche/valheim-server-docker**: Auto-updates Valheim, world backups, mod support, actively maintained
+- **One VM per game**: Each game gets its own VM, disk, and firewall rule with game-prefixed names
+- **Bash scripts as core engine**: Web UI is a thin Flask wrapper that calls `./val` commands via subprocess
 
-## GCP Resources Created
-- `valserver` — e2-small Compute Engine VM (Container-Optimized OS)
-- `valserver-data` — 10GB pd-standard persistent disk for world saves
-- `valserver-allow-valheim` — Firewall rule allowing UDP 2456-2458 ingress
+## Architecture: Multi-Game Config
+
+Game-specific config lives in `scripts/games/<game>.sh`. Each file defines a standard set of variables:
+- `GAME_ID`, `GAME_DISPLAY_NAME` — identity
+- `VM_NAME`, `DISK_NAME`, `FIREWALL_RULE`, `NETWORK_TAG` — GCP resources
+- `GAME_IMAGE`, `GAME_CONTAINER_NAME`, `GAME_PORTS_*` — Docker config
+- `GAME_DEFAULT_SIZE`, `GAME_MIN_SIZE` — VM sizing
+- `GAME_READY_SIGNAL`, `GAME_READY_TIMEOUT` — health check
+- `GAME_DATA_MOUNT`, `GAME_DATA_VOLUME`, `GAME_WORLD_SUBDIR` — data paths
+- `game_docker_env_flags()` — function emitting `-e KEY=VAL` flags for docker run
+- `game_validate_config()` — function for game-specific validation (password checks, min size)
+
+`scripts/config.sh` loads the game config based on the `GAME` env var (default: `valheim`), and provides `generate_startup_script()` used by both setup.sh and restore.sh.
+
+## GCP Resources Per Game
+Each game creates its own set of resources:
+- **Valheim**: `bifrost`, `bifrost-data`, `bifrost-allow-valheim`
+- **Minecraft**: `bifrost-minecraft`, `bifrost-minecraft-data`, `bifrost-allow-minecraft`
+- **7DTD**: `bifrost-7dtd`, `bifrost-7dtd-data`, `bifrost-allow-7dtd`
+- **Enshrouded**: `bifrost-enshrouded`, `bifrost-enshrouded-data`, `bifrost-allow-enshrouded`
 
 ## File Layout
 ```
-val                          — CLI entry point (./val start, ./val stop, etc.)
-.env                         — FTP credentials for Gportals (gitignored)
-docker-compose.yml           — Local testing
+val                              — CLI entry point (./val --game=minecraft start, etc.)
+.env                             — FTP credentials for Gportals (gitignored)
+docker-compose.yml               — Local testing (profiles: valheim, minecraft, 7dtd, enshrouded)
 scripts/
-  config.sh                  — Shared config (project, zone, VM name, etc.)
-  setup.sh                   — One-time GCP resource creation (VM, disk, firewall)
-  start.sh                   — Start VM, wait for healthy, print IP
-  stop.sh                    — Graceful save → wait → stop VM
-  update.sh                  — Pull latest image + redownload game (for Valheim patches)
-  backup.sh                  — Download world save tarball from GCP server
-  fetch-gportals-backup.sh   — Download latest backup from Gportals FTP
-  restore.sh                 — Restore world from backup (auto-detects world name)
-  export-world.sh            — Export local Valheim world to backup format
-  teardown.sh                — Destroy all GCP resources (with confirmation)
+  config.sh                      — Shared config, game loader, generate_startup_script()
+  setup.sh                       — One-time GCP resource creation (VM, disk, firewall)
+  start.sh                       — Start VM, wait for healthy, print IP
+  stop.sh                        — Graceful save → wait → stop VM
+  status.sh                      — JSON status output for CLI and web UI
+  update.sh                      — Pull latest image + redownload game
+  backup.sh                      — Download world save tarball from GCP server
+  restore.sh                     — Restore world from backup
+  teardown.sh                    — Destroy all GCP resources (with confirmation)
+  fetch-gportals-backup.sh       — Download latest backup from Gportals FTP (Valheim only)
+  export-world.sh                — Export local Valheim world to backup format (Valheim only)
+  update-modifiers.sh            — Change difficulty settings (Valheim only)
+  games/
+    valheim.sh                   — Valheim game config
+    minecraft.sh                 — Minecraft game config
+    7dtd.sh                      — 7 Days to Die game config
+    enshrouded.sh                — Enshrouded game config
+web/
+  app.py                         — Flask web UI backend
+  templates/index.html           — Single-page web UI
+  requirements.txt               — Python dependencies (flask)
 ```
 
 ## Gportals FTP Integration
@@ -60,37 +100,52 @@ Then use: `./val fetch-gportals <world-name>` (e.g., `./val fetch-gportals Finnl
 
 ## COS Gotchas
 - Container-Optimized OS has a **read-only root filesystem** — cannot mkdir under `/mnt`
-- Use `/var/valheim` for the data disk mount point (writable)
+- Each game uses its own data mount path (e.g., `/var/valheim`, `/var/minecraft`)
 - `gcloud compute instances create-with-container` is **deprecated** — use a startup-script instead
 - Re-run startup script on a live VM: `sudo google_metadata_script_runner startup`
-- **Race condition on boot**: After VM creation, SSH may be available before the startup script mounts the data disk. Always wait for `mountpoint -q /var/valheim` before writing to the data disk.
+- **Race condition on boot**: After VM creation, SSH may be available before the startup script mounts the data disk. Always wait for `mountpoint -q <GAME_DATA_MOUNT>` before writing to the data disk.
 
 ## Startup Script & Metadata
-- Server config (SERVER_PASS, WORLD_NAME, etc.) is baked into the VM startup script metadata
-- Changing WORLD_NAME requires updating metadata AND recreating the container (restore.sh handles this automatically)
+- Server config is baked into the VM startup script metadata via `generate_startup_script()` in config.sh
+- Changing WORLD_NAME (Valheim) requires updating metadata AND recreating the container (restore.sh handles this automatically)
 - The startup script reuses existing containers (`docker start`) — only creates new ones on first boot
 - To force a fresh container (e.g., after image update): remove container, then re-run startup script
 
 ## Commands
-- `./val setup [--size=small|medium] [--restore=path/to/backup.tar.gz]` — One-time infrastructure setup
-- `./val start` — Start server, wait for ready, print connection IP
-- `./val stop` — Save and stop server
-- `./val update` — Pull latest image + redownload game files (for Valheim patches)
-- `./val backup` — Download world backup from GCP server
-- `./val fetch-gportals <world-name>` — Download latest backup from Gportals FTP (requires `.env` with `FTP_URL`)
-- `./val restore [path/to/backup.tar.gz]` — Restore world (auto-detects world name, updates metadata if needed)
+All commands accept `--game=valheim|minecraft|7dtd|enshrouded` (default: valheim).
+
+- `./val [--game=GAME] setup [--size=small|medium] [--restore=path/to/backup.tar.gz]` — One-time infrastructure setup
+- `./val [--game=GAME] start` — Start server, wait for ready, print connection IP
+- `./val [--game=GAME] stop` — Save and stop server
+- `./val [--game=GAME] status` — Show server status (JSON output)
+- `./val [--game=GAME] update` — Pull latest image + redownload game files
+- `./val [--game=GAME] backup` — Download world backup from GCP server
+- `./val [--game=GAME] restore [path/to/backup.tar.gz]` — Restore world from backup
+- `./val [--game=GAME] teardown` — Delete all GCP resources
+
+Valheim-only commands:
+- `./val fetch-gportals <world-name>` — Download latest backup from Gportals FTP
 - `./val export-world [path/to/worlds]` — Export local Valheim world to backup format
-- `./val teardown` — Delete all GCP resources
-- `docker compose up` — Run locally for testing
+- `./val update-modifiers [--combat=X] [--preset=Y] ...` — Change difficulty settings
+
+Local testing with Docker Compose:
+- `docker compose --profile valheim up`
+- `docker compose --profile minecraft up`
+
+Web UI:
+- `cd web && pip install -r requirements.txt && python app.py`
+- Open `http://localhost:5000`
 
 ## Style & Conventions
 - Shell scripts: `#!/usr/bin/env bash` with `set -euo pipefail`
 - All sensitive config via gcloud instance metadata (never hardcode passwords)
 - Scripts should be idempotent where possible
 - Print clear status messages (what's happening, connection info)
+- Game-specific logic goes in `scripts/games/<game>.sh`, not in the shared scripts
 - Keep it simple — hobby project, not production infrastructure
 
 ## Cost Model
-- Stopped: ~$0.40/mo (10GB disk only, free tier may cover it)
-- Running: ~$0.0168/hr (e2-small) + ~$0.005/hr (ephemeral IP)
-- Typical month (20hrs play): ~$0.84
+- Stopped: ~$0.40/mo per game (10GB disk only, free tier may cover it)
+- Running (e2-small): ~$0.0168/hr + ~$0.005/hr (ephemeral IP)
+- Running (e2-medium): ~$0.0336/hr + ~$0.005/hr (ephemeral IP)
+- Typical month (20hrs play, one game): ~$0.84 (e2-small) or ~$1.17 (e2-medium)

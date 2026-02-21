@@ -12,7 +12,6 @@ step_end() {
   echo "    (took ${elapsed}s)"
 }
 
-READY_TIMEOUT=600  # 10 minutes (first boot downloads ~1.9GB from Steam)
 POLL_INTERVAL=5
 
 step_start
@@ -32,23 +31,23 @@ echo "    VM IP: $IP"
 step_end
 
 step_start
-echo "==> Waiting for Valheim server to be ready (this can take 2-8 min)..."
+echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready (this can take 2-8 min)..."
 
 # Capture the current timestamp so we only match log lines from THIS boot,
 # not stale lines from a previous run still in the container's log history.
 BOOT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 elapsed=0
-while [ $elapsed -lt $READY_TIMEOUT ]; do
+while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
   # Check docker logs since this boot for the real ready signal
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' valheim-server 2>&1 | grep -q 'Registering lobby'" 2>/dev/null; then
+    "docker logs --since '$BOOT_TS' $GAME_CONTAINER_NAME 2>&1 | grep -q '$GAME_READY_SIGNAL'" 2>/dev/null; then
     step_end
     TOTAL_TIME=$(($(date +%s) - START_TIME))
     echo ""
     echo "==> Server is ready!"
     echo "    Total start time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
-    echo "    Connect in Valheim: $IP:2456"
+    echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
     echo ""
     exit 0
   fi
@@ -63,8 +62,8 @@ done
 
 TOTAL_TIME=$(($(date +%s) - START_TIME))
 echo ""
-echo "==> Timed out after ${READY_TIMEOUT}s waiting for server readiness."
+echo "==> Timed out after ${GAME_READY_TIMEOUT}s waiting for server readiness."
 echo "    Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
-echo "    The server may still be starting (first boot downloads ~1.9GB)."
-echo "    Connect in Valheim: $IP:2456"
-echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f valheim-server'"
+echo "    The server may still be starting."
+echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
+echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f $GAME_CONTAINER_NAME'"

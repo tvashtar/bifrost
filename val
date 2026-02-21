@@ -3,18 +3,66 @@ set -euo pipefail
 
 SCRIPTS_DIR="$(dirname "$0")/scripts"
 
-case "${1:-}" in
-  start|stop|setup|backup|restore|teardown|update|export-world)
-    exec "$SCRIPTS_DIR/$1.sh" "${@:2}"
+# Parse --game flag from anywhere in arguments
+GAME="${GAME:-valheim}"
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --game=*) GAME="${arg#--game=}" ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+export GAME
+
+COMMAND="${ARGS[0]:-}"
+COMMAND_ARGS=()
+if [ ${#ARGS[@]} -gt 1 ]; then
+  COMMAND_ARGS=("${ARGS[@]:1}")
+fi
+
+case "$COMMAND" in
+  start|stop|setup|backup|restore|teardown|update|status)
+    exec "$SCRIPTS_DIR/$COMMAND.sh" "${COMMAND_ARGS[@]}"
+    ;;
+  # Valheim-only commands
+  export-world)
+    if [ "$GAME" != "valheim" ]; then
+      echo "ERROR: export-world is only available for Valheim."
+      exit 1
+    fi
+    exec "$SCRIPTS_DIR/export-world.sh" "${COMMAND_ARGS[@]}"
     ;;
   fetch-gportals)
-    exec "$SCRIPTS_DIR/fetch-gportals-backup.sh" "${@:2}"
+    if [ "$GAME" != "valheim" ]; then
+      echo "ERROR: fetch-gportals is only available for Valheim."
+      exit 1
+    fi
+    exec "$SCRIPTS_DIR/fetch-gportals-backup.sh" "${COMMAND_ARGS[@]}"
     ;;
   update-modifiers)
-    exec "$SCRIPTS_DIR/update-modifiers.sh" "${@:2}"
+    if [ "$GAME" != "valheim" ]; then
+      echo "ERROR: update-modifiers is only available for Valheim."
+      exit 1
+    fi
+    exec "$SCRIPTS_DIR/update-modifiers.sh" "${COMMAND_ARGS[@]}"
     ;;
   *)
-    echo "Usage: val {start|stop|setup|backup|restore|export-world|fetch-gportals|update-modifiers|teardown|update}"
+    echo "Usage: val [--game=valheim|minecraft|7dtd|enshrouded] <command>"
+    echo ""
+    echo "Commands:"
+    echo "  setup       One-time infrastructure setup"
+    echo "  start       Start server, wait for ready, print IP"
+    echo "  stop        Save and stop server"
+    echo "  status      Show server status (JSON)"
+    echo "  backup      Download world backup"
+    echo "  restore     Restore world from backup"
+    echo "  update      Pull latest image + redownload game"
+    echo "  teardown    Delete all GCP resources"
+    echo ""
+    echo "Valheim-only:"
+    echo "  export-world       Export local Valheim world to backup"
+    echo "  fetch-gportals     Download backup from Gportals FTP"
+    echo "  update-modifiers   Change world difficulty settings"
     exit 1
     ;;
 esac

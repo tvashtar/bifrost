@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bifrost</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #eee; max-width: 960px; margin: 0 auto; padding: 24px; }
+    h1 { color: #e94560; margin-bottom: 4px; }
+    .subtitle { color: #888; margin-bottom: 24px; }
+    .games { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+    .card { background: #16213e; border-radius: 12px; padding: 20px; }
+    .card h2 { margin-bottom: 12px; font-size: 1.2em; }
+    .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 0.8em; font-weight: 600; text-transform: uppercase; }
+    .badge-running { background: #2d6a4f; }
+    .badge-stopped { background: #6c757d; }
+    .badge-not_setup { background: #495057; }
+    .badge-error, .badge-unknown { background: #e63946; }
+    .connect { font-family: monospace; color: #a8dadc; font-size: 0.9em; }
+    .actions { display: flex; gap: 8px; margin-bottom: 12px; }
+    .actions button { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 600; color: white; transition: opacity 0.15s; }
+    .actions button:hover { opacity: 0.85; }
+    .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-start { background: #2d6a4f; }
+    .btn-stop { background: #e63946; }
+    .btn-backup { background: #457b9d; }
+    .output { background: #0f0f23; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 0.78em; white-space: pre-wrap; max-height: 220px; overflow-y: auto; display: none; line-height: 1.4; color: #ccc; }
+  </style>
+</head>
+<body>
+  <h1>Bifrost</h1>
+  <p class="subtitle">Game server manager</p>
+  <div class="games" id="games"></div>
+
+  <script>
+    const GAMES = {{ games | tojson }};
+    const DISPLAY = {
+      valheim: "Valheim",
+      minecraft: "Minecraft",
+      "7dtd": "7 Days to Die",
+      enshrouded: "Enshrouded"
+    };
+
+    function card(g) {
+      return `
+        <div class="card" id="card-${g}">
+          <h2>${DISPLAY[g]}</h2>
+          <div class="status-row">
+            <span class="badge badge-unknown" id="badge-${g}">...</span>
+            <span class="connect" id="connect-${g}"></span>
+          </div>
+          <div class="actions">
+            <button class="btn-start" id="btn-start-${g}" onclick="act('${g}','start')">Start</button>
+            <button class="btn-stop" id="btn-stop-${g}" onclick="act('${g}','stop')">Stop</button>
+            <button class="btn-backup" id="btn-backup-${g}" onclick="act('${g}','backup')">Backup</button>
+          </div>
+          <div class="output" id="out-${g}"></div>
+        </div>`;
+    }
+
+    document.getElementById("games").innerHTML = GAMES.map(card).join("");
+
+    async function refresh() {
+      try {
+        const r = await fetch("/api/status");
+        const data = await r.json();
+        for (const [g, info] of Object.entries(data)) {
+          const b = document.getElementById(`badge-${g}`);
+          const s = info.status || "unknown";
+          b.textContent = s === "not_setup" ? "not set up" : s;
+          b.className = `badge badge-${s}`;
+          const c = document.getElementById(`connect-${g}`);
+          c.textContent = info.ip && info.port ? `${info.ip}:${info.port}` : "";
+        }
+      } catch (e) { console.error("Status refresh failed:", e); }
+    }
+
+    async function act(g, action) {
+      const btns = document.querySelectorAll(`#card-${g} button`);
+      btns.forEach(b => b.disabled = true);
+      const out = document.getElementById(`out-${g}`);
+      out.style.display = "block";
+      out.textContent = `Running ${action}...\n`;
+      try {
+        const r = await fetch(`/api/${g}/${action}`, { method: "POST" });
+        const data = await r.json();
+        out.textContent = data.output || (data.success ? "Done." : "Failed.");
+      } catch (e) {
+        out.textContent = `Error: ${e}`;
+      }
+      btns.forEach(b => b.disabled = false);
+      refresh();
+    }
+
+    refresh();
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>

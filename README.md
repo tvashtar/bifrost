@@ -1,6 +1,15 @@
-# valserver
+# bifrost
 
-A quick-deploy Valheim dedicated server on GCP Compute Engine — cheap to run, easy to spin up and tear down.
+Multi-game dedicated server manager on GCP Compute Engine — cheap pay-per-use hosting for Valheim, Minecraft, 7 Days to Die, and Enshrouded.
+
+## Supported Games
+
+| Game | Docker Image | Ports | Default VM | Min VM |
+|------|-------------|-------|-----------|--------|
+| Valheim | `lloesche/valheim-server` | UDP 2456-2458 | e2-small (2GB) | e2-small |
+| Minecraft | `itzg/minecraft-server` | TCP 25565 | e2-small (2GB) | e2-small |
+| 7 Days to Die | `vinanrra/7dtd-server` | UDP 26900-26902, TCP 26900 | e2-medium (4GB) | e2-medium |
+| Enshrouded | `mornedhels/enshrouded-server` | UDP 15636-15637 | e2-medium (4GB) | e2-medium |
 
 ## Why GCP Compute Engine?
 
@@ -9,290 +18,189 @@ A quick-deploy Valheim dedicated server on GCP Compute Engine — cheap to run, 
 | UDP support | Native | Yes (dedicated IPv4 required) | **No** (dealbreaker) |
 | Pay only when running | Yes (stopped VMs = disk only) | Partially (volume + rootfs billed) | N/A |
 | Docker support | Yes (Container-Optimized OS) | Yes | Yes |
-| Persistent storage | Persistent Disk (survives stop) | Volumes | Volumes |
-| CLI management | `gcloud` | `flyctl` | `railway` |
-| **~Cost at 20hrs/mo** | **~$0.84** (ephemeral IP) | ~$3.80-5 | N/A |
+| **~Cost at 20hrs/mo** | **~$0.84** (e2-small) | ~$3.80-5 | N/A |
 
-**Railway** was ruled out (no inbound UDP). **Fly.io** works but costs more due to mandatory dedicated IPv4 ($2/mo) for UDP. GCP Compute Engine is the cheapest option — stopped VMs only bill for disk (~$0.40/mo for 10GB), and ephemeral IPs cost nearly nothing.
-
-## Architecture
-
-```
-┌──────────────────────────────────────┐
-│     GCP Compute Engine (e2-small)    │
-│  ┌────────────────────────────────┐  │
-│  │  Container-Optimized OS (COS)  │  │
-│  │  ┌──────────────────────────┐  │  │
-│  │  │ lloesche/valheim-server  │  │  │
-│  │  │ - Auto-updates Valheim   │  │  │
-│  │  │ - World backups          │  │  │
-│  │  │ - BepInEx/mod support    │  │  │
-│  │  └──────────────────────────┘  │  │
-│  └────────────────────────────────┘  │
-│         │                            │
-│         ▼                            │
-│  ┌──────────────┐                    │
-│  │ Persistent   │  World saves,      │
-│  │ Disk /config │  backups, config   │
-│  └──────────────┘                    │
-└──────────────────────────────────────┘
-        │ UDP 2456-2458
-        ▼
-   Players connect via ephemeral IP
-```
+Stopped VMs only bill for disk (~$0.40/mo for 10GB). Ephemeral IPs cost nearly nothing.
 
 ## Prerequisites
 
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated
 - A GCP project with billing enabled
 - Docker (for local testing only)
+- Python 3 + Flask (for web UI only)
 
 ## Quick Start
 
-### 1. Initial Setup
-
 ```bash
-# Clone and enter the repo
-git clone <this-repo>
-cd valserver
+git clone git@github.com:tvashtar/bifrost.git
+cd bifrost
 
 # Set your GCP project
 export GCP_PROJECT="your-project-id"
-gcloud config set project $GCP_PROJECT
 
-# Run the setup script (creates VM, firewall rules, disk)
+# Set up a Valheim server
 SERVER_PASS='yourpass' ./val setup
 
-# Or restore an existing world during setup (skips world generation)
-SERVER_PASS='yourpass' ./val setup --restore=backups/your-backup.tar.gz
+# Set up a Minecraft server
+./val --game=minecraft setup
 
-# Use --size=medium for larger groups (4GB RAM instead of 2GB)
-SERVER_PASS='yourpass' ./val setup --size=medium
+# Set up a 7DTD server (auto-uses e2-medium)
+./val --game=7dtd setup
 
-# Set difficulty during setup (see World Modifiers section for details)
-MODIFIER_PRESET=casual SERVER_PASS='yourpass' ./val setup
+# Start and connect
+./val start                        # Valheim (default)
+./val --game=minecraft start       # Minecraft
 ```
 
-### 2. Connect
+## Commands
 
-Start the server and wait for it to be ready:
+All commands accept `--game=valheim|minecraft|7dtd|enshrouded` (default: `valheim`).
 
 ```bash
-./val start
-# Polls server logs and prints the IP when actually ready to accept connections
+./val [--game=GAME] setup [--size=small|medium] [--restore=backup.tar.gz]
+./val [--game=GAME] start          # Start server, wait for ready, print IP
+./val [--game=GAME] stop           # Graceful save + stop VM
+./val [--game=GAME] status         # Show server status (JSON)
+./val [--game=GAME] backup         # Download world backup
+./val [--game=GAME] restore [file] # Restore world from backup
+./val [--game=GAME] update         # Pull latest image + redownload game
+./val [--game=GAME] teardown       # Delete all GCP resources
 ```
 
-In Valheim: **Join Game → Add Server → `<ip>:2456`**
+Valheim-only commands:
+```bash
+./val export-world                 # Export local Valheim world
+./val fetch-gportals <world-name>  # Download backup from Gportals FTP
+./val update-modifiers [flags]     # Change world difficulty
+```
 
-> **Note**: First boot takes 5-8 min (downloads ~1.9GB from Steam + world generation). Subsequent boots take 2-4 min (world generation only). The script waits for the server to be fully ready before printing the connection info.
+## Web UI
 
-> **Note**: The IP changes each time you start the server (ephemeral). The start script prints it. If you want a fixed IP, see [Static IP](#optional-static-ip) below.
-
-### 3. Backup / Restore / Export
+A basic local web UI for managing all game servers:
 
 ```bash
-# Download world save from server
-./val backup
-
-# Restore a backup to the server (auto-detects world name)
-./val restore backups/valheim-backup-20260215.tar.gz
-
-# Export a world from your local Valheim game files
-./val export-world
-# Then restore it to the server
-./val restore backups/valheim-backup-20260215.tar.gz
+cd web
+pip install -r requirements.txt
+python app.py
+# Open http://localhost:5000
 ```
 
-### 4. Update (after a Valheim patch)
-
-```bash
-./val update
-# Pulls latest Docker image, redownloads game files, waits for ready
-```
-
-World saves are preserved — only the server binary is refreshed.
-
-### 5. Stop / Start (save money)
-
-```bash
-# Stop the server (only disk billed while stopped — ~$0.40/mo)
-./val stop
-
-# Start it back up for game night
-./val start
-```
-
-### 6. Tear Down Completely
-
-```bash
-# Download your world save first
-./val backup
-
-# Destroy everything
-./val teardown
-```
-
-## Configuration
-
-Server config is set via instance metadata (passed as env vars to the container). Key settings:
-
-| Variable | Default | Description |
-|---|---|---|
-| `SERVER_NAME` | `"My Server"` | Server name shown in browser |
-| `SERVER_PASS` | *required* | Password (min 5 chars) |
-| `WORLD_NAME` | `"Dedicated"` | World file name |
-| `SERVER_PUBLIC` | `false` | List in public server browser |
-| `BACKUPS_CRON` | `*/15 * * * *` | Backup frequency |
-
-See the full list at [lloesche/valheim-server-docker](https://github.com/lloesche/valheim-server-docker#environment-variables).
-
-To update config:
-
-```bash
-gcloud compute instances add-metadata valserver \
-  --metadata SERVER_NAME="New Name"
-```
-
-## World Modifiers (Difficulty Settings)
-
-Valheim supports world modifiers to adjust difficulty. You can set these during setup or change them later.
-
-### Available Modifiers
-
-| Modifier | Options | Description |
-|---|---|---|
-| `MODIFIER_COMBAT` | `veryeasy`, `easy`, `hard`, `veryhard` | Enemy damage and health |
-| `MODIFIER_DEATHPENALTY` | `casual`, `veryeasy`, `easy`, `hard`, `hardcore` | Skill loss and equipment on death |
-| `MODIFIER_RESOURCES` | `muchless`, `less`, `more`, `muchmore`, `most` | Resource drop rates |
-| `MODIFIER_RAIDS` | `none`, `muchless`, `less`, `more`, `muchmore` | Raid frequency |
-| `MODIFIER_PORTALS` | `casual`, `hard`, `veryhard` | Portal restrictions (casual allows ore) |
-| `MODIFIER_PRESET` | `casual`, `easy`, `normal`, `hard`, `hardcore`, `immersive`, `hammer` | Preset combinations |
-
-### Setup with Custom Modifiers
-
-To create a world with specific difficulty settings:
-
-```bash
-# Easy mode: casual combat, no raids, can teleport with ore
-MODIFIER_COMBAT=veryeasy \
-MODIFIER_RAIDS=none \
-MODIFIER_PORTALS=casual \
-SERVER_PASS='yourpass' ./val setup
-
-# Hard mode preset
-MODIFIER_PRESET=hard \
-SERVER_PASS='yourpass' ./val setup
-
-# Custom mix: hard combat but more resources
-MODIFIER_COMBAT=veryhard \
-MODIFIER_RESOURCES=muchmore \
-SERVER_PASS='yourpass' ./val setup
-```
-
-### Change Modifiers on Existing World
-
-Use the `update-modifiers` command to adjust difficulty on a running world:
-
-```bash
-# Check current modifiers (reads from .fwl file)
-./val update-modifiers --list
-
-# Apply a preset (casual, easy, normal, hard, etc.)
-./val update-modifiers --preset=casual
-
-# Change specific modifiers
-./val update-modifiers --raids=muchless --resources=more
-
-# Enable raids but keep other settings
-./val update-modifiers --raids=muchless
-
-# Reset to normal/default difficulty
-./val update-modifiers --reset
-```
-
-**Note**: Changing modifiers requires stopping and restarting the server (~3-5 min downtime). The script handles this automatically. Your world save is preserved - only difficulty settings change.
-
-### Examples
-
-```bash
-# Start with very easy mode for beginners
-MODIFIER_PRESET=casual SERVER_PASS='yourpass' ./val setup
-
-# Later, add some challenge back
-./val update-modifiers --raids=muchless --combat=easy
-
-# Or go full hardcore
-./val update-modifiers --preset=hardcore
-```
-
-## Cost Breakdown
-
-For a small friend group playing ~20 hours/month:
-
-| Resource | Cost | Notes |
-|---|---|---|
-| Compute (e2-small) | ~$0.34 | $0.0168/hr × 20hrs |
-| Persistent Disk (10GB) | ~$0.40 | Billed 24/7, free tier covers it |
-| Ephemeral IP | ~$0.10 | Only while running |
-| **Total** | **~$0.84/mo** | |
-
-With a static IP instead: ~$4.72/mo ($3.65/mo for reserved IP).
-
-Compare to $5-15/month for always-on game hosting.
-
-## Optional: Static IP
-
-If you want a consistent server address:
-
-```bash
-gcloud compute addresses create valserver-ip --region <your-region>
-# Then update scripts/setup.sh to use --address=valserver-ip
-```
-
-This adds ~$3.65/mo but means the same IP every session.
+Shows status, start/stop/backup buttons for all 4 games in a dark-themed dashboard.
 
 ## Local Testing
 
 ```bash
-docker compose up
+docker compose --profile valheim up
+docker compose --profile minecraft up
+docker compose --profile 7dtd up
+docker compose --profile enshrouded up
 ```
 
-Connect to `localhost:2456` from Valheim.
+## Configuration
 
-## Project Structure
+### Valheim
 
+| Variable | Default | Description |
+|---|---|---|
+| `SERVER_NAME` | `"Bifrost"` | Server name shown in browser |
+| `SERVER_PASS` | *required* | Password (min 5 chars) |
+| `WORLD_NAME` | `"Dedicated"` | World file name |
+| `MODIFIER_PRESET` | *(none)* | `casual`, `easy`, `hard`, `hardcore`, etc. |
+
+See full list at [lloesche/valheim-server-docker](https://github.com/lloesche/valheim-server-docker#environment-variables).
+
+### Minecraft
+
+| Variable | Default | Description |
+|---|---|---|
+| `MC_DIFFICULTY` | `normal` | `peaceful`, `easy`, `normal`, `hard` |
+| `MC_GAMEMODE` | `survival` | `survival`, `creative`, `adventure`, `spectator` |
+| `MC_MEMORY` | `2G` | JVM memory allocation |
+| `MC_OPS` | *(none)* | Comma-separated list of ops |
+
+### 7 Days to Die
+
+| Variable | Default | Description |
+|---|---|---|
+| `SDTD_VERSION` | `stable` | Game version |
+
+### Enshrouded
+
+| Variable | Default | Description |
+|---|---|---|
+| `SERVER_PASS` | *(none)* | Server password (optional) |
+| `ENSHROUDED_SLOTS` | `16` | Max player slots |
+
+## VM Sizing
+
+7 Days to Die and Enshrouded require at least e2-medium (4GB RAM). If you pass `--size=small`, the setup script will warn and auto-upgrade:
+
+```bash
+$ ./val --game=7dtd setup --size=small
+WARNING: 7 Days to Die needs at least 4GB RAM (e2-medium).
+    Overriding to e2-medium. Set FORCE_SMALL=1 to force e2-small.
 ```
-valserver/
-├── val                     # CLI entry point (./val start, ./val stop, etc.)
-├── docker-compose.yml      # Local development/testing
-├── scripts/
-│   ├── config.sh                  # Shared config (project, zone, VM name, etc.)
-│   ├── setup.sh                   # One-time: create VM, firewall, disk
-│   ├── start.sh                   # Start VM, wait for ready, print IP
-│   ├── stop.sh                    # Graceful save + stop VM
-│   ├── update.sh                  # Pull latest image + redownload game files
-│   ├── update-modifiers.sh        # Change world difficulty/modifiers
-│   ├── backup.sh                  # Download world save locally
-│   ├── restore.sh                 # Restore world from backup
-│   ├── export-world.sh            # Export local Valheim world to backup format
-│   ├── fetch-gportals-backup.sh   # Download backup from Gportals FTP
-│   └── teardown.sh                # Destroy all GCP resources
-├── CLAUDE.md
-└── README.md
+
+## Cost Breakdown
+
+For ~20 hours/month of play per game:
+
+| | e2-small (Valheim, MC) | e2-medium (7DTD, Enshrouded) |
+|---|---|---|
+| Compute | ~$0.34 | ~$0.67 |
+| Disk (10GB) | ~$0.40 | ~$0.40 |
+| Ephemeral IP | ~$0.10 | ~$0.10 |
+| **Total** | **~$0.84/mo** | **~$1.17/mo** |
+
+Compare to $5-15/month for always-on game hosting.
+
+## Valheim World Modifiers
+
+```bash
+# Set during setup
+MODIFIER_PRESET=casual SERVER_PASS='yourpass' ./val setup
+
+# Change on existing world
+./val update-modifiers --preset=casual
+./val update-modifiers --raids=muchless --resources=more
+./val update-modifiers --list    # View current
+./val update-modifiers --reset   # Back to defaults
 ```
+
+## Architecture
+
+Each game gets its own set of GCP resources:
+
+| Game | VM | Disk | Firewall Rule |
+|------|-----|------|---------------|
+| Valheim | `bifrost` | `bifrost-data` | `bifrost-allow-valheim` |
+| Minecraft | `bifrost-minecraft` | `bifrost-minecraft-data` | `bifrost-allow-minecraft` |
+| 7DTD | `bifrost-7dtd` | `bifrost-7dtd-data` | `bifrost-allow-7dtd` |
+| Enshrouded | `bifrost-enshrouded` | `bifrost-enshrouded-data` | `bifrost-allow-enshrouded` |
+
+Game-specific config lives in `scripts/games/<game>.sh`. Shared logic (GCP project, startup script generation) is in `scripts/config.sh`. The `val` CLI parses `--game=` and exports the `GAME` env var to all scripts.
 
 ## Troubleshooting
 
-- **"Connection failed"**: Server takes 2-4 min to boot (5-8 min on first start, which downloads ~1.9GB from Steam). The `start.sh` script waits for the `Registering lobby` log line before printing "ready". If you started manually, check `gcloud compute ssh valserver -- 'docker logs valheim-server'`.
-- **"Password too short"**: `SERVER_PASS` must be at least 5 characters.
-- **World data lost**: Ensure the persistent disk is mounted and the Docker volume maps to it.
-- **Performance issues**: Resize with `gcloud compute instances set-machine-type valserver --machine-type e2-standard-2`.
+- **"Connection failed"**: Server takes 2-8 min to boot depending on game. The start script waits for the ready signal before printing "ready".
+- **"Password too short"** (Valheim): `SERVER_PASS` must be at least 5 characters.
 - **IP changed**: Expected with ephemeral IPs. Run `./val start` to see the new one.
+- **Performance issues**: Resize with `gcloud compute instances set-machine-type <vm-name> --machine-type e2-standard-2`.
+- **Check logs**: `gcloud compute ssh <vm-name> --zone=us-east4-c -- 'docker logs -f <container-name>'`
+
+## Optional: Static IP
+
+```bash
+gcloud compute addresses create bifrost-ip --region <your-region>
+# Then update scripts/setup.sh to use --address=bifrost-ip
+```
+
+Adds ~$3.65/mo but gives a consistent server address.
 
 ## Sources
 
-- [lloesche/valheim-server-docker](https://github.com/lloesche/valheim-server-docker) — Docker image
-- [Valheim Dedicated Server Guide](https://www.valheimgame.com/support/a-guide-to-dedicated-servers/) — Official docs
-- [GCP Compute Engine Pricing](https://cloud.google.com/compute/all-pricing) — VM and disk costs
-- [GCP VM Lifecycle](https://cloud.google.com/compute/docs/instances/instance-life-cycle) — Stop/start billing
-- [GCP Container-Optimized OS](https://cloud.google.com/container-optimized-os/docs) — Docker on GCE
+- [lloesche/valheim-server-docker](https://github.com/lloesche/valheim-server-docker)
+- [itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server)
+- [vinanrra/7dtd-server](https://github.com/vinanrra/7dtd-server-docker)
+- [mornedhels/enshrouded-server](https://github.com/mornedhels/enshrouded-server)
+- [GCP Compute Engine Pricing](https://cloud.google.com/compute/all-pricing)
