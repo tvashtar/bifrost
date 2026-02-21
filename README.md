@@ -121,6 +121,8 @@ For ~20 hours/month of play per game:
 
 Compare to $5-15/month for always-on game hosting.
 
+> **Warning:** If you leave instances running 24/7, costs jump to **~$15/mo** (e2-small) or **~$28/mo** (e2-medium). Always `./bifrost stop` when you're done playing.
+
 ## Architecture
 
 Each game gets its own set of GCP resources:
