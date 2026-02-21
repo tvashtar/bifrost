@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     *)
-      echo "Usage: ./val [--game=GAME] setup [--size=small|medium] [--restore=path/to/backup.tar.gz]"
+      echo "Usage: ./bifrost [--game=GAME] setup [--size=small|medium] [--restore=path/to/backup.tar.gz]"
       exit 1
       ;;
   esac
@@ -152,7 +152,7 @@ while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
     echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
     echo "    Password: (the one you set)"
     echo ""
-    echo "    Stop server: ./val${GAME:+ --game=$GAME} stop"
+    echo "    Stop server: ./bifrost${GAME:+ --game=$GAME} stop"
     exit 0
   fi
 
@@ -169,4 +169,4 @@ echo "==> Timed out waiting for readiness (server may still be starting)."
 echo "    Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
 echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
 echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f $GAME_CONTAINER_NAME'"
-echo "    Stop server: ./val${GAME:+ --game=$GAME} stop"
+echo "    Stop server: ./bifrost${GAME:+ --game=$GAME} stop"

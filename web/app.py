@@ -9,7 +9,7 @@ from pathlib import Path
 from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
-VAL_CMD = str(Path(__file__).resolve().parent.parent / "val")
+VAL_CMD = str(Path(__file__).resolve().parent.parent / "bifrost")
 GAMES = ["valheim", "minecraft", "7dtd", "enshrouded"]
 
 

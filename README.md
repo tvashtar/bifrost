@@ -35,43 +35,47 @@ Stopped VMs only bill for disk (~$0.40/mo for 10GB). Ephemeral IPs cost nearly n
 git clone git@github.com:tvashtar/bifrost.git
 cd bifrost
 
-# Set your GCP project
-export GCP_PROJECT="your-project-id"
+# Create .env with your GCP project ID
+cat > .env <<'EOF'
+GCP_PROJECT="your-project-id"
+EOF
 
 # Set up a Valheim server
-SERVER_PASS='yourpass' ./val setup
+SERVER_PASS='yourpass' ./bifrost setup
 
 # Set up a Minecraft server
-./val --game=minecraft setup
+./bifrost --game=minecraft setup
 
 # Set up a 7DTD server (auto-uses e2-medium)
-./val --game=7dtd setup
+./bifrost --game=7dtd setup
 
 # Start and connect
-./val start                        # Valheim (default)
-./val --game=minecraft start       # Minecraft
+./bifrost start                        # Valheim (default)
+./bifrost --game=minecraft start       # Minecraft
 ```
+
+The `.env` file is sourced automatically by `./bifrost` and is gitignored.
 
 ## Commands
 
 All commands accept `--game=valheim|minecraft|7dtd|enshrouded` (default: `valheim`).
 
 ```bash
-./val [--game=GAME] setup [--size=small|medium] [--restore=backup.tar.gz]
-./val [--game=GAME] start          # Start server, wait for ready, print IP
-./val [--game=GAME] stop           # Graceful save + stop VM
-./val [--game=GAME] status         # Show server status (JSON)
-./val [--game=GAME] backup         # Download world backup
-./val [--game=GAME] restore [file] # Restore world from backup
-./val [--game=GAME] update         # Pull latest image + redownload game
-./val [--game=GAME] teardown       # Delete all GCP resources
+./bifrost [--game=GAME] setup [--size=small|medium] [--restore=backup.tar.gz]
+./bifrost [--game=GAME] start          # Start server, wait for ready, print IP
+./bifrost [--game=GAME] stop           # Graceful save + stop VM
+./bifrost [--game=GAME] status         # Show server status (JSON)
+./bifrost [--game=GAME] backup         # Download world backup
+./bifrost [--game=GAME] restore [file] # Restore world from backup
+./bifrost [--game=GAME] update         # Pull latest image + redownload game
+./bifrost [--game=GAME] teardown       # Delete all GCP resources
 ```
 
 Valheim-only commands:
 ```bash
-./val export-world                 # Export local Valheim world
-./val fetch-gportals <world-name>  # Download backup from Gportals FTP
-./val update-modifiers [flags]     # Change world difficulty
+./bifrost export-world                 # Export local Valheim world
+./bifrost fetch-gportals <world-name>  # Download backup from Gportals FTP
+./bifrost update-modifiers [flags]     # Change world difficulty
 ```
 
 ## Web UI
@@ -96,50 +100,14 @@ docker compose --profile 7dtd up
 docker compose --profile enshrouded up
 ```
 
-## Configuration
+## Game Configuration
 
-### Valheim
+Each game has its own configuration variables, VM requirements, and notes:
 
-| Variable | Default | Description |
-|---|---|---|
-| `SERVER_NAME` | `"Bifrost"` | Server name shown in browser |
-| `SERVER_PASS` | *required* | Password (min 5 chars) |
-| `WORLD_NAME` | `"Dedicated"` | World file name |
-| `MODIFIER_PRESET` | *(none)* | `casual`, `easy`, `hard`, `hardcore`, etc. |
-
-See full list at [lloesche/valheim-server-docker](https://github.com/lloesche/valheim-server-docker#environment-variables).
-
-### Minecraft
-
-| Variable | Default | Description |
-|---|---|---|
-| `MC_DIFFICULTY` | `normal` | `peaceful`, `easy`, `normal`, `hard` |
-| `MC_GAMEMODE` | `survival` | `survival`, `creative`, `adventure`, `spectator` |
-| `MC_MEMORY` | `2G` | JVM memory allocation |
-| `MC_OPS` | *(none)* | Comma-separated list of ops |
-
-### 7 Days to Die
-
-| Variable | Default | Description |
-|---|---|---|
-| `SDTD_VERSION` | `stable` | Game version |
-
-### Enshrouded
-
-| Variable | Default | Description |
-|---|---|---|
-| `SERVER_PASS` | *(none)* | Server password (optional) |
-| `ENSHROUDED_SLOTS` | `16` | Max player slots |
-
-## VM Sizing
-
-7 Days to Die and Enshrouded require at least e2-medium (4GB RAM). If you pass `--size=small`, the setup script will warn and auto-upgrade:
-
-```bash
-$ ./val --game=7dtd setup --size=small
-WARNING: 7 Days to Die needs at least 4GB RAM (e2-medium).
-    Overriding to e2-medium. Set FORCE_SMALL=1 to force e2-small.
-```
+- [Valheim](docs/valheim.md) — world modifiers, Gportals FTP, password setup
+- [Minecraft](docs/minecraft.md) — difficulty, gamemode, ops, memory
+- [7 Days to Die](docs/7dtd.md) — requires e2-medium (4GB RAM)
+- [Enshrouded](docs/enshrouded.md) — requires e2-medium (4GB RAM)
 
 ## Cost Breakdown
 
@@ -154,19 +122,6 @@ For ~20 hours/month of play per game:
 
 Compare to $5-15/month for always-on game hosting.
 
-## Valheim World Modifiers
-
-```bash
-# Set during setup
-MODIFIER_PRESET=casual SERVER_PASS='yourpass' ./val setup
-
-# Change on existing world
-./val update-modifiers --preset=casual
-./val update-modifiers --raids=muchless --resources=more
-./val update-modifiers --list    # View current
-./val update-modifiers --reset   # Back to defaults
-```
-
 ## Architecture
 
 Each game gets its own set of GCP resources:
@@ -178,13 +133,13 @@ Each game gets its own set of GCP resources:
 | 7DTD | `bifrost-7dtd` | `bifrost-7dtd-data` | `bifrost-allow-7dtd` |
 | Enshrouded | `bifrost-enshrouded` | `bifrost-enshrouded-data` | `bifrost-allow-enshrouded` |
 
-Game-specific config lives in `scripts/games/<game>.sh`. Shared logic (GCP project, startup script generation) is in `scripts/config.sh`. The `val` CLI parses `--game=` and exports the `GAME` env var to all scripts.
+Game-specific config lives in `scripts/games/<game>.sh`. Shared logic (GCP project, startup script generation) is in `scripts/config.sh`. The `bifrost` CLI parses `--game=` and exports the `GAME` env var to all scripts.
 
 ## Troubleshooting
 
 - **"Connection failed"**: Server takes 2-8 min to boot depending on game. The start script waits for the ready signal before printing "ready".
 - **"Password too short"** (Valheim): `SERVER_PASS` must be at least 5 characters.
-- **IP changed**: Expected with ephemeral IPs. Run `./val start` to see the new one.
+- **IP changed**: Expected with ephemeral IPs. Run `./bifrost start` to see the new one.
 - **Performance issues**: Resize with `gcloud compute instances set-machine-type <vm-name> --machine-type e2-standard-2`.
 - **Check logs**: `gcloud compute ssh <vm-name> --zone=us-east4-c -- 'docker logs -f <container-name>'`
 

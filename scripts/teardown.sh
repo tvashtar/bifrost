@@ -12,7 +12,7 @@ echo ""
 read -r -p "Have you backed up your world saves? Type 'yes' to proceed: " confirm
 
 if [ "$confirm" != "yes" ]; then
-  echo "Aborted. Run ./val${GAME:+ --game=$GAME} backup first."
+  echo "Aborted. Run ./bifrost${GAME:+ --game=$GAME} backup first."
   exit 1
 fi
 

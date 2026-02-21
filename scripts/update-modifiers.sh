@@ -31,7 +31,7 @@ Examples:
 
 Notes:
   - Server will be stopped and restarted (takes ~3-5 minutes)
-  - Consider running './val backup' first
+  - Consider running './bifrost backup' first
   - Only specify modifiers you want to change
 EOF
   exit 0

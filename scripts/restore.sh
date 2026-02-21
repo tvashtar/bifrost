@@ -13,7 +13,7 @@ else
   BACKUP_FILE=$(ls -t "$BACKUP_DIR"/${GAME_ID}-*.tar.gz 2>/dev/null | head -1)
   if [ -z "$BACKUP_FILE" ]; then
     echo "ERROR: No backup files found in $BACKUP_DIR"
-    echo "Usage: ./val${GAME:+ --game=$GAME} restore [path/to/backup.tar.gz]"
+    echo "Usage: ./bifrost${GAME:+ --game=$GAME} restore [path/to/backup.tar.gz]"
     exit 1
   fi
 fi

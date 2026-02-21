@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPTS_DIR="$(dirname "$0")/scripts"
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPTS_DIR="$REPO_DIR/scripts"
+
+# Load .env if present (GCP_PROJECT, FTP_URL, etc.)
+[ -f "$REPO_DIR/.env" ] && set -a && source "$REPO_DIR/.env" && set +a
 
 # Parse --game flag from anywhere in arguments
 GAME="${GAME:-valheim}"
@@ -47,7 +51,7 @@ case "$COMMAND" in
     exec "$SCRIPTS_DIR/update-modifiers.sh" "${COMMAND_ARGS[@]}"
     ;;
   *)
-    echo "Usage: val [--game=valheim|minecraft|7dtd|enshrouded] <command>"
+    echo "Usage: bifrost [--game=valheim|minecraft|7dtd|enshrouded] <command>"
     echo ""
     echo "Commands:"
     echo "  setup       One-time infrastructure setup"

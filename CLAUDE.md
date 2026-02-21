@@ -27,7 +27,7 @@ Multi-game dedicated server manager on GCP Compute Engine using Docker. Supports
 - **Ephemeral IP by default**: Saves ~$3.50/mo vs static IP. IP changes on restart but start script prints it
 - **Container-Optimized OS**: Preinstalled Docker, minimal attack surface, auto-updates
 - **One VM per game**: Each game gets its own VM, disk, and firewall rule with game-prefixed names
-- **Bash scripts as core engine**: Web UI is a thin Flask wrapper that calls `./val` commands via subprocess
+- **Bash scripts as core engine**: Web UI is a thin Flask wrapper that calls `./bifrost` commands via subprocess
 
 ## Architecture: Multi-Game Config
 
@@ -45,15 +45,15 @@ Game-specific config lives in `scripts/games/<game>.sh`. Each file defines a sta
 
 ## GCP Resources Per Game
 Each game creates its own set of resources:
-- **Valheim**: `bifrost`, `bifrost-data`, `bifrost-allow-valheim`
+- **Valheim**: `valserver`, `valserver-data`, `valserver-allow-valheim` (kept from pre-rename to preserve existing resources)
 - **Minecraft**: `bifrost-minecraft`, `bifrost-minecraft-data`, `bifrost-allow-minecraft`
 - **7DTD**: `bifrost-7dtd`, `bifrost-7dtd-data`, `bifrost-allow-7dtd`
 - **Enshrouded**: `bifrost-enshrouded`, `bifrost-enshrouded-data`, `bifrost-allow-enshrouded`
 
 ## File Layout
 ```
-val                              — CLI entry point (./val --game=minecraft start, etc.)
-.env                             — FTP credentials for Gportals (gitignored)
+bifrost                          — CLI entry point (./bifrost --game=minecraft start, etc.)
+.env                             — GCP_PROJECT + FTP credentials (gitignored, auto-sourced by ./bifrost)
 docker-compose.yml               — Local testing (profiles: valheim, minecraft, 7dtd, enshrouded)
 scripts/
   config.sh                      — Shared config, game loader, generate_startup_script()
@@ -73,18 +73,23 @@ scripts/
     minecraft.sh                 — Minecraft game config
     7dtd.sh                      — 7 Days to Die game config
     enshrouded.sh                — Enshrouded game config
+docs/
+  valheim.md                     — Valheim configuration & world modifiers
+  minecraft.md                   — Minecraft configuration
+  7dtd.md                        — 7 Days to Die configuration
+  enshrouded.md                  — Enshrouded configuration
 web/
   app.py                         — Flask web UI backend
   templates/index.html           — Single-page web UI
   requirements.txt               — Python dependencies (flask)
 ```
 
-## Gportals FTP Integration
-To fetch backups from Gportals, create a `.env` file:
+## .env File
+The `./bifrost` CLI auto-sources `.env` from the repo root. Required/optional variables:
 ```bash
-FTP_URL="ftp://username:password@host:port"
+GCP_PROJECT="your-project-id"                      # Required — no hardcoded default
+FTP_URL="ftp://username:password@host:port"         # Optional — for Gportals FTP backup fetching
 ```
-Then use: `./val fetch-gportals <world-name>` (e.g., `./val fetch-gportals Finnland`)
 
 ## Valheim Server Essentials
 - UDP ports 2456-2458 must be open (firewall rule) — 2458 is used by Steam
@@ -114,19 +119,19 @@ Then use: `./val fetch-gportals <world-name>` (e.g., `./val fetch-gportals Finnl
 ## Commands
 All commands accept `--game=valheim|minecraft|7dtd|enshrouded` (default: valheim).
 
-- `./val [--game=GAME] setup [--size=small|medium] [--restore=path/to/backup.tar.gz]` — One-time infrastructure setup
-- `./val [--game=GAME] start` — Start server, wait for ready, print connection IP
-- `./val [--game=GAME] stop` — Save and stop server
-- `./val [--game=GAME] status` — Show server status (JSON output)
-- `./val [--game=GAME] update` — Pull latest image + redownload game files
-- `./val [--game=GAME] backup` — Download world backup from GCP server
-- `./val [--game=GAME] restore [path/to/backup.tar.gz]` — Restore world from backup
-- `./val [--game=GAME] teardown` — Delete all GCP resources
+- `./bifrost [--game=GAME] setup [--size=small|medium] [--restore=path/to/backup.tar.gz]` — One-time infrastructure setup
+- `./bifrost [--game=GAME] start` — Start server, wait for ready, print connection IP
+- `./bifrost [--game=GAME] stop` — Save and stop server
+- `./bifrost [--game=GAME] status` — Show server status (JSON output)
+- `./bifrost [--game=GAME] update` — Pull latest image + redownload game files
+- `./bifrost [--game=GAME] backup` — Download world backup from GCP server
+- `./bifrost [--game=GAME] restore [path/to/backup.tar.gz]` — Restore world from backup
+- `./bifrost [--game=GAME] teardown` — Delete all GCP resources
 
 Valheim-only commands:
-- `./val fetch-gportals <world-name>` — Download latest backup from Gportals FTP
-- `./val export-world [path/to/worlds]` — Export local Valheim world to backup format
-- `./val update-modifiers [--combat=X] [--preset=Y] ...` — Change difficulty settings
+- `./bifrost fetch-gportals <world-name>` — Download latest backup from Gportals FTP
+- `./bifrost export-world [path/to/worlds]` — Export local Valheim world to backup format
+- `./bifrost update-modifiers [--combat=X] [--preset=Y] ...` — Change difficulty settings
 
 Local testing with Docker Compose:
 - `docker compose --profile valheim up`

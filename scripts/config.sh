@@ -3,7 +3,7 @@
 # Override any of these with environment variables before running.
 
 # GCP project settings (same for all games)
-PROJECT="${GCP_PROJECT:-valserver-487600}"
+PROJECT="${GCP_PROJECT:?GCP_PROJECT must be set in .env or environment}"
 ZONE="${GCP_ZONE:-us-east4-c}"
 REGION="${GCP_REGION:-us-east4}"
 DISK_SIZE="${DISK_SIZE:-10}"  # GB

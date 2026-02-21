@@ -5,9 +5,9 @@ GAME_ID="valheim"
 GAME_DISPLAY_NAME="Valheim"
 
 # GCP resource names
-VM_NAME="bifrost"
-DISK_NAME="bifrost-data"
-FIREWALL_RULE="bifrost-allow-valheim"
+VM_NAME="valserver"
+DISK_NAME="valserver-data"
+FIREWALL_RULE="valserver-allow-valheim"
 NETWORK_TAG="valheim-server"
 
 # Docker
@@ -70,7 +70,7 @@ game_docker_env_flags() {
 game_validate_config() {
   if [ -z "${SERVER_PASS:-}" ]; then
     echo "ERROR: SERVER_PASS must be set (min 5 characters)."
-    echo "Usage: SERVER_PASS='yourpass' ./val setup [--size=small|medium]"
+    echo "Usage: SERVER_PASS='yourpass' ./bifrost setup [--size=small|medium]"
     return 1
   fi
   if [ ${#SERVER_PASS} -lt 5 ]; then
