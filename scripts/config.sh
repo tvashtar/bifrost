@@ -28,6 +28,9 @@ source "$GAME_CONFIG"
 # Machine type: use game default unless overridden by env or --size flag
 MACHINE_TYPE="${MACHINE_TYPE:-$GAME_DEFAULT_SIZE}"
 
+# Disk size: use game-specific size if set, otherwise the global default
+DISK_SIZE="${GAME_DISK_SIZE:-$DISK_SIZE}"
+
 # Repo root (parent of scripts/)
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CACHE_DIR="$REPO_ROOT/.cache"

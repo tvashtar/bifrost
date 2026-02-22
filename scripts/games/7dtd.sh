@@ -8,7 +8,7 @@ GAME_DISPLAY_NAME="7 Days to Die"
 VM_NAME="bifrost-7dtd"
 DISK_NAME="bifrost-7dtd-data"
 FIREWALL_RULE="bifrost-allow-7dtd"
-NETWORK_TAG="7dtd-server"
+NETWORK_TAG="sdtd-server"
 
 # Docker
 GAME_IMAGE="vinanrra/7dtd-server:latest"
@@ -21,6 +21,7 @@ GAME_PORTS_FIREWALL="udp:26900-26902,tcp:26900"
 # VM sizing
 GAME_DEFAULT_SIZE="e2-medium"
 GAME_MIN_SIZE="e2-medium"
+GAME_DISK_SIZE=15  # 7DTD needs ~12GB for game files
 
 # Ready signal
 GAME_READY_SIGNAL="GameServer.Init successful"
