@@ -28,5 +28,8 @@ echo "==> Deleting firewall rule..."
 gcloud compute firewall-rules delete "$FIREWALL_RULE" \
   --quiet 2>/dev/null || echo "    (firewall rule not found, skipping)"
 
+echo "==> Removing local cache..."
+rm -f "$REPO_ROOT/.cache/${GAME_ID}-modifiers.json"
+
 echo ""
 echo "==> All $GAME_DISPLAY_NAME resources deleted. No further charges will be incurred."

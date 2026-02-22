@@ -109,6 +109,10 @@ while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
     echo "==> Restore complete! Server is ready."
     echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
     echo ""
+    # Cache modifiers from the restored world (reads .fwl file via SSH)
+    if [ "$GAME_ID" = "valheim" ]; then
+      "$SCRIPT_DIR/update-modifiers.sh" --list > /dev/null 2>&1 || true
+    fi
     exit 0
   fi
 

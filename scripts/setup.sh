@@ -107,6 +107,17 @@ gcloud compute instances create "$VM_NAME" \
   --scopes=default
 step_end
 
+# Cache initial modifiers locally (Valheim only)
+if [ "$GAME_ID" = "valheim" ]; then
+  write_modifiers_cache \
+    "combat=${MODIFIER_COMBAT:-}" \
+    "deathpenalty=${MODIFIER_DEATHPENALTY:-}" \
+    "resources=${MODIFIER_RESOURCES:-}" \
+    "raids=${MODIFIER_RAIDS:-}" \
+    "portals=${MODIFIER_PORTALS:-}" \
+    "preset=${MODIFIER_PRESET:-}"
+fi
+
 IP=$(gcloud compute instances describe "$VM_NAME" \
   --zone="$ZONE" \
   --format='get(networkInterfaces[0].accessConfigs[0].natIP)')

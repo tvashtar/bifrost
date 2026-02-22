@@ -10,6 +10,7 @@ from flask import Flask, Response, render_template, jsonify, request
 
 app = Flask(__name__)
 BIFROST_CMD = str(Path(__file__).resolve().parent.parent / "bifrost")
+CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 GAMES = ["valheim", "minecraft", "7dtd", "enshrouded"]
 
 
@@ -145,6 +146,15 @@ def get_modifiers(game):
             val = match.group(1).lower()
             if val != "default":
                 modifiers[key] = val
+
+    # Fall back to local cache if live query returned nothing
+    if not modifiers:
+        cache_file = CACHE_DIR / f"{game}-modifiers.json"
+        if cache_file.exists():
+            try:
+                modifiers = json.loads(cache_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
 
     return jsonify(modifiers)
 

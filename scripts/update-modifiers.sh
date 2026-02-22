@@ -9,7 +9,8 @@ usage() {
   cat <<EOF
 Usage: $0 [OPTIONS]
 
-Update world modifiers on the running Valheim server.
+Update world modifiers for the Valheim server.
+Works whether the server is running or stopped.
 World saves are NOT affected - only the difficulty settings change.
 
 Options:
@@ -20,7 +21,7 @@ Options:
   --portals=VALUE          casual, hard, veryhard
   --preset=VALUE           casual, easy, normal, hard, hardcore, immersive, hammer
 
-  --list                   Show actual world modifiers from .fwl file (no changes)
+  --list                   Show current world modifiers (no changes)
   --reset                  Clear all modifiers (use default/normal difficulty)
   -h, --help               Show this help
 
@@ -30,7 +31,8 @@ Examples:
   $0 --reset
 
 Notes:
-  - Server will be stopped and restarted (takes ~3-5 minutes)
+  - If the server is running, it will be stopped and restarted (~3-5 minutes)
+  - If the server is stopped, metadata is updated for the next start
   - Consider running './bifrost backup' first
   - Only specify modifiers you want to change
 EOF
@@ -96,67 +98,125 @@ if [ "$LIST_ONLY" = false ] && \
   usage
 fi
 
-# Get current values from running container
-echo "==> Fetching current server configuration..."
-CURRENT_ENV=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  'docker inspect valheim-server --format="{{range .Config.Env}}{{println .}}{{end}}"' 2>/dev/null)
+# Read current config from VM metadata (works regardless of VM state)
+read_config_from_metadata() {
+  echo "==> Reading current configuration from VM metadata..."
+  local startup_script
+  startup_script=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
+    --format='value(metadata.items[startup-script])' 2>/dev/null) || {
+    echo "ERROR: Could not read VM metadata. Is the VM set up?"
+    exit 1
+  }
 
-get_env_var() {
-  local var_name="$1"
-  echo "$CURRENT_ENV" | grep "^${var_name}=" | cut -d= -f2 || echo ""
+  # Parse -e KEY="VAL" patterns from the startup script
+  parse_env() {
+    local key="$1"
+    echo "$startup_script" | grep -oP " -e ${key}=\"\K[^\"]*" || echo ""
+  }
+
+  SERVER_NAME=$(parse_env "SERVER_NAME")
+  SERVER_PASS=$(parse_env "SERVER_PASS")
+  WORLD_NAME=$(parse_env "WORLD_NAME")
+  SERVER_PUBLIC=$(parse_env "SERVER_PUBLIC")
+  CURRENT_COMBAT=$(parse_env "MODIFIER_COMBAT")
+  CURRENT_DEATHPENALTY=$(parse_env "MODIFIER_DEATHPENALTY")
+  CURRENT_RESOURCES=$(parse_env "MODIFIER_RESOURCES")
+  CURRENT_RAIDS=$(parse_env "MODIFIER_RAIDS")
+  CURRENT_PORTALS=$(parse_env "MODIFIER_PORTALS")
+  CURRENT_PRESET=$(parse_env "MODIFIER_PRESET")
 }
 
-SERVER_NAME=$(get_env_var "SERVER_NAME")
-SERVER_PASS=$(get_env_var "SERVER_PASS")
-WORLD_NAME=$(get_env_var "WORLD_NAME" | tr -d '\r\n' | xargs)
-SERVER_PUBLIC=$(get_env_var "SERVER_PUBLIC")
+# Get VM status (RUNNING, TERMINATED, STAGING, etc.)
+get_vm_status() {
+  gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
+    --format='get(status)' 2>/dev/null || echo "UNKNOWN"
+}
+
+read_config_from_metadata
+VM_STATUS=$(get_vm_status)
+
+# Read modifiers from the .fwl world file via SSH (running VM only).
+# The world file is the source of truth since Valheim bakes modifiers in.
+read_modifiers_from_world_file() {
+  local world_file="${GAME_DATA_MOUNT}/${GAME_WORLD_SUBDIR}/${WORLD_NAME}.fwl"
+  local preset_line
+  preset_line=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    "sudo cat $world_file 2>/dev/null | tr -cd '[:print:]\n' | grep -oE 'preset [a-z_:]+' | tail -1" 2>/dev/null) || true
+
+  if [ -n "$preset_line" ]; then
+    CURRENT_COMBAT=$(echo "$preset_line" | grep -o 'combat_[^:]*' | cut -d_ -f2 || echo "")
+    CURRENT_DEATHPENALTY=$(echo "$preset_line" | grep -o 'deathpenalty_[^:]*' | cut -d_ -f2 || echo "")
+    CURRENT_RESOURCES=$(echo "$preset_line" | grep -o 'resources_[^:]*' | cut -d_ -f2 || echo "")
+    CURRENT_RAIDS=$(echo "$preset_line" | grep -o 'raids_[^:]*' | cut -d_ -f2 || echo "")
+    CURRENT_PORTALS=$(echo "$preset_line" | grep -o 'portals_[^:]*' | cut -d_ -f2 || echo "")
+    return 0
+  fi
+  return 1
+}
+
+# Read modifiers from local cache file (fallback when VM is stopped)
+read_modifiers_from_cache() {
+  local cache_file="$CACHE_DIR/${GAME_ID}-modifiers.json"
+  if [ -f "$cache_file" ]; then
+    local json
+    json=$(cat "$cache_file")
+    # Parse simple {"key":"val"} JSON — empty string if key missing
+    parse_cache() {
+      echo "$json" | grep -oP "\"$1\":\\s*\"\\K[^\"]*" || echo ""
+    }
+    CURRENT_COMBAT=$(parse_cache "combat")
+    CURRENT_DEATHPENALTY=$(parse_cache "deathpenalty")
+    CURRENT_RESOURCES=$(parse_cache "resources")
+    CURRENT_RAIDS=$(parse_cache "raids")
+    CURRENT_PORTALS=$(parse_cache "portals")
+    CURRENT_PRESET=$(parse_cache "preset")
+    return 0
+  fi
+  return 1
+}
+
+# Resolve current modifiers: world file (running) > cache (stopped) > metadata
+if [ "$VM_STATUS" = "RUNNING" ]; then
+  echo "==> Reading modifiers from world file..."
+  read_modifiers_from_world_file || echo "    (Could not read world file, using metadata values)"
+else
+  # VM is stopped — can't SSH, so use cache (last known good from world file)
+  if read_modifiers_from_cache; then
+    echo "==> Using cached modifiers (from last server run)"
+  else
+    echo "==> No cached modifiers found, using metadata values"
+  fi
+fi
 
 # If --list, just print current settings and exit
 if [ "$LIST_ONLY" = true ]; then
+  if [ "$VM_STATUS" = "RUNNING" ]; then
+    local_source="world file"
+  elif [ -f "$CACHE_DIR/${GAME_ID}-modifiers.json" ]; then
+    local_source="cache"
+  else
+    local_source="VM metadata"
+  fi
+
   echo ""
   echo "==> Server: $SERVER_NAME"
   echo "    World: $WORLD_NAME"
   echo ""
-  echo "==> Reading actual world modifiers from .fwl file..."
+  echo "==> Current modifiers (from ${local_source}):"
+  echo "    COMBAT: ${CURRENT_COMBAT:-default}"
+  echo "    DEATHPENALTY: ${CURRENT_DEATHPENALTY:-default}"
+  echo "    RESOURCES: ${CURRENT_RESOURCES:-default}"
+  echo "    RAIDS: ${CURRENT_RAIDS:-default}"
+  echo "    PORTALS: ${CURRENT_PORTALS:-default}"
+  echo "    PRESET: ${CURRENT_PRESET:-default}"
 
-  # Extract modifiers from the world file
-  WORLD_FILE="/var/valheim/worlds_local/${WORLD_NAME}.fwl"
-  PRESET_LINE=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-    "sudo cat $WORLD_FILE 2>/dev/null | tr -cd '[:print:]\n' | grep -oE 'preset [a-z_:]+' | tail -1" || echo "")
-
-  if [ -z "$PRESET_LINE" ]; then
-    echo "    (Could not read world file - showing container env vars instead)"
-    CURRENT_COMBAT=$(get_env_var "MODIFIER_COMBAT")
-    CURRENT_DEATHPENALTY=$(get_env_var "MODIFIER_DEATHPENALTY")
-    CURRENT_RESOURCES=$(get_env_var "MODIFIER_RESOURCES")
-    CURRENT_RAIDS=$(get_env_var "MODIFIER_RAIDS")
-    CURRENT_PORTALS=$(get_env_var "MODIFIER_PORTALS")
-    CURRENT_PRESET=$(get_env_var "MODIFIER_PRESET")
-
-    echo ""
-    echo "==> Container env modifiers:"
-    echo "    COMBAT: ${CURRENT_COMBAT:-default}"
-    echo "    DEATHPENALTY: ${CURRENT_DEATHPENALTY:-default}"
-    echo "    RESOURCES: ${CURRENT_RESOURCES:-default}"
-    echo "    RAIDS: ${CURRENT_RAIDS:-default}"
-    echo "    PORTALS: ${CURRENT_PORTALS:-default}"
-    echo "    PRESET: ${CURRENT_PRESET:-default}"
-  else
-    # Parse the preset line (format: "preset combat_X:deathpenalty_Y:resources_Z:raids_W:portals_V")
-    CURRENT_COMBAT=$(echo "$PRESET_LINE" | grep -o 'combat_[^:]*' | cut -d_ -f2 || echo "default")
-    CURRENT_DEATHPENALTY=$(echo "$PRESET_LINE" | grep -o 'deathpenalty_[^:]*' | cut -d_ -f2 || echo "default")
-    CURRENT_RESOURCES=$(echo "$PRESET_LINE" | grep -o 'resources_[^:]*' | cut -d_ -f2 || echo "default")
-    CURRENT_RAIDS=$(echo "$PRESET_LINE" | grep -o 'raids_[^:]*' | cut -d_ -f2 || echo "default")
-    CURRENT_PORTALS=$(echo "$PRESET_LINE" | grep -o 'portals_[^:]*' | cut -d_ -f2 || echo "default")
-
-    echo ""
-    echo "==> Active world modifiers (from .fwl file):"
-    echo "    COMBAT: $CURRENT_COMBAT"
-    echo "    DEATHPENALTY: $CURRENT_DEATHPENALTY"
-    echo "    RESOURCES: $CURRENT_RESOURCES"
-    echo "    RAIDS: $CURRENT_RAIDS"
-    echo "    PORTALS: $CURRENT_PORTALS"
-  fi
+  write_modifiers_cache \
+    "combat=${CURRENT_COMBAT:-}" \
+    "deathpenalty=${CURRENT_DEATHPENALTY:-}" \
+    "resources=${CURRENT_RESOURCES:-}" \
+    "raids=${CURRENT_RAIDS:-}" \
+    "portals=${CURRENT_PORTALS:-}" \
+    "preset=${CURRENT_PRESET:-}"
 
   exit 0
 fi
@@ -171,12 +231,12 @@ if [ "$RESET_MODIFIERS" = true ]; then
   MODIFIER_PRESET=""
   echo "==> Resetting all modifiers to default (normal difficulty)"
 else
-  MODIFIER_COMBAT="${UPDATE_COMBAT:-$(get_env_var "MODIFIER_COMBAT")}"
-  MODIFIER_DEATHPENALTY="${UPDATE_DEATHPENALTY:-$(get_env_var "MODIFIER_DEATHPENALTY")}"
-  MODIFIER_RESOURCES="${UPDATE_RESOURCES:-$(get_env_var "MODIFIER_RESOURCES")}"
-  MODIFIER_RAIDS="${UPDATE_RAIDS:-$(get_env_var "MODIFIER_RAIDS")}"
-  MODIFIER_PORTALS="${UPDATE_PORTALS:-$(get_env_var "MODIFIER_PORTALS")}"
-  MODIFIER_PRESET="${UPDATE_PRESET:-$(get_env_var "MODIFIER_PRESET")}"
+  MODIFIER_COMBAT="${UPDATE_COMBAT:-$CURRENT_COMBAT}"
+  MODIFIER_DEATHPENALTY="${UPDATE_DEATHPENALTY:-$CURRENT_DEATHPENALTY}"
+  MODIFIER_RESOURCES="${UPDATE_RESOURCES:-$CURRENT_RESOURCES}"
+  MODIFIER_RAIDS="${UPDATE_RAIDS:-$CURRENT_RAIDS}"
+  MODIFIER_PORTALS="${UPDATE_PORTALS:-$CURRENT_PORTALS}"
+  MODIFIER_PRESET="${UPDATE_PRESET:-$CURRENT_PRESET}"
 fi
 
 # Show what will change
@@ -201,82 +261,11 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 1
 fi
 
-# Stop the server gracefully
-echo ""
-echo "==> Stopping server gracefully..."
-"$SCRIPT_DIR/stop.sh"
-
-# Generate new startup script
+# Generate new startup script using shared function
 echo "==> Generating new startup script with updated modifiers..."
 STARTUP_FILE=$(mktemp)
 trap 'rm -f "$STARTUP_FILE"' EXIT
-
-cat > "$STARTUP_FILE" <<'STARTUP_EOF'
-#!/bin/bash
-set -e
-
-# Wait for data disk to be available
-echo "Waiting for data disk mount..."
-timeout=60
-while [ $timeout -gt 0 ] && ! mountpoint -q /var/valheim; do
-  sleep 1
-  ((timeout--))
-done
-
-if ! mountpoint -q /var/valheim; then
-  echo "ERROR: Data disk not mounted at /var/valheim"
-  exit 1
-fi
-
-# Start or create container
-if docker ps -a --format '{{.Names}}' | grep -q '^valheim-server$'; then
-  echo "Starting existing container..."
-  docker start valheim-server
-else
-  echo "Creating new container..."
-  docker run -d \
-    --name valheim-server \
-    --restart=unless-stopped \
-    -v /var/valheim:/config \
-STARTUP_EOF
-
-# Add environment variables
-cat >> "$STARTUP_FILE" <<ENV_EOF
-    -p 2456-2458:2456-2458/udp \\
-    -e SERVER_NAME="$SERVER_NAME" \\
-    -e SERVER_PASS="$SERVER_PASS" \\
-    -e WORLD_NAME="$WORLD_NAME" \\
-    -e SERVER_PUBLIC="$SERVER_PUBLIC" \\
-    -e BACKUPS_CRON="*/15 * * * *" \\
-ENV_EOF
-
-# Add modifiers (only if not empty)
-if [ -n "$MODIFIER_COMBAT" ]; then
-  echo "    -e MODIFIER_COMBAT=\"$MODIFIER_COMBAT\" \\" >> "$STARTUP_FILE"
-fi
-if [ -n "$MODIFIER_DEATHPENALTY" ]; then
-  echo "    -e MODIFIER_DEATHPENALTY=\"$MODIFIER_DEATHPENALTY\" \\" >> "$STARTUP_FILE"
-fi
-if [ -n "$MODIFIER_RESOURCES" ]; then
-  echo "    -e MODIFIER_RESOURCES=\"$MODIFIER_RESOURCES\" \\" >> "$STARTUP_FILE"
-fi
-if [ -n "$MODIFIER_RAIDS" ]; then
-  echo "    -e MODIFIER_RAIDS=\"$MODIFIER_RAIDS\" \\" >> "$STARTUP_FILE"
-fi
-if [ -n "$MODIFIER_PORTALS" ]; then
-  echo "    -e MODIFIER_PORTALS=\"$MODIFIER_PORTALS\" \\" >> "$STARTUP_FILE"
-fi
-if [ -n "$MODIFIER_PRESET" ]; then
-  echo "    -e MODIFIER_PRESET=\"$MODIFIER_PRESET\" \\" >> "$STARTUP_FILE"
-fi
-
-# Finish startup script
-cat >> "$STARTUP_FILE" <<'STARTUP_EOF'
-    lloesche/valheim-server:latest
-fi
-
-echo "Valheim server startup complete"
-STARTUP_EOF
+generate_startup_script "$STARTUP_FILE"
 
 # Update VM metadata
 echo "==> Updating VM startup script..."
@@ -284,15 +273,30 @@ gcloud compute instances add-metadata "$VM_NAME" \
   --zone="$ZONE" \
   --metadata-from-file=startup-script="$STARTUP_FILE"
 
-# Remove old container so it gets recreated with new config
-echo "==> Removing old container..."
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-  'docker rm -f valheim-server 2>/dev/null || true'
+if [ "$VM_STATUS" = "RUNNING" ]; then
+  # VM is running: remove old container and restart
+  echo "==> Removing old container..."
+  gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    "docker rm -f $GAME_CONTAINER_NAME 2>/dev/null || true"
 
-# Start the server
-echo "==> Starting server with new modifiers..."
-"$SCRIPT_DIR/start.sh"
+  echo "==> Starting server with new modifiers..."
+  "$SCRIPT_DIR/start.sh"
 
-echo ""
-echo "==> Modifiers updated successfully!"
-echo "==> Server is starting with new difficulty settings."
+  echo ""
+  echo "==> Modifiers updated successfully!"
+  echo "==> Server is starting with new difficulty settings."
+else
+  # VM is stopped: just update metadata
+  echo ""
+  echo "==> Modifiers updated successfully!"
+  echo "==> Changes will take effect next time the server starts."
+fi
+
+# Cache the new modifiers locally
+write_modifiers_cache \
+  "combat=${MODIFIER_COMBAT:-}" \
+  "deathpenalty=${MODIFIER_DEATHPENALTY:-}" \
+  "resources=${MODIFIER_RESOURCES:-}" \
+  "raids=${MODIFIER_RAIDS:-}" \
+  "portals=${MODIFIER_PORTALS:-}" \
+  "preset=${MODIFIER_PRESET:-}"

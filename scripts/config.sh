@@ -28,6 +28,32 @@ source "$GAME_CONFIG"
 # Machine type: use game default unless overridden by env or --size flag
 MACHINE_TYPE="${MACHINE_TYPE:-$GAME_DEFAULT_SIZE}"
 
+# Repo root (parent of scripts/)
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CACHE_DIR="$REPO_ROOT/.cache"
+
+# Write modifier values to the local cache file.
+# Usage: write_modifiers_cache key1=val1 key2=val2 ...
+# Only non-empty values are written. Output is JSON matching the web API format.
+write_modifiers_cache() {
+  mkdir -p "$CACHE_DIR"
+  local cache_file="$CACHE_DIR/${GAME_ID}-modifiers.json"
+  local json="{"
+  local first=true
+  for pair in "$@"; do
+    local key="${pair%%=*}"
+    local val="${pair#*=}"
+    val="${val%"${val##*[![:space:]]}"}"  # trim trailing whitespace
+    if [ -n "$val" ] && [ "$val" != "default" ]; then
+      $first || json+=","
+      json+="\"$key\":\"$val\""
+      first=false
+    fi
+  done
+  json+="}"
+  echo "$json" > "$cache_file"
+}
+
 # Generate the startup script that runs on the GCP VM.
 # Called by setup.sh and restore.sh to avoid duplicating the heredoc.
 # Usage: generate_startup_script "/path/to/output/file"
