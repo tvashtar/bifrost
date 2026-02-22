@@ -30,6 +30,9 @@ echo "==> Removing old container and pulling latest image..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
   "docker stop $GAME_CONTAINER_NAME 2>/dev/null || true && docker rm $GAME_CONTAINER_NAME 2>/dev/null || true"
 
+# Capture timestamp before starting so we don't miss the ready signal
+BOOT_TS=$(get_vm_timestamp)
+
 # Re-run the startup script, which will see no container and create a fresh one
 echo "==> Re-running startup script (fresh container)..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
@@ -38,7 +41,6 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
 echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready..."
 
 POLL_INTERVAL=5
-BOOT_TS=$(get_vm_timestamp)
 elapsed=0
 while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
