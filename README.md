@@ -2,7 +2,7 @@
 
 Multi-game dedicated server manager on GCP Compute Engine — cheap pay-per-use hosting for Valheim, Minecraft, 7 Days to Die, and Enshrouded.
 
-![Bifrost Web UI](docs/demo.gif)
+![Bifrost Web UI](docs/bifrost_screen.png)
 
 ## Supported Games
 
