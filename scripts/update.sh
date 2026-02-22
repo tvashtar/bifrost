@@ -19,6 +19,13 @@ IP=$(gcloud compute instances describe "$VM_NAME" \
   --zone="$ZONE" \
   --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 
+echo "==> Updating VM startup script metadata..."
+STARTUP_FILE=$(mktemp)
+generate_startup_script "$STARTUP_FILE"
+gcloud compute instances add-metadata "$VM_NAME" --zone="$ZONE" \
+  --metadata-from-file=startup-script="$STARTUP_FILE"
+rm -f "$STARTUP_FILE"
+
 echo "==> Removing old container and pulling latest image..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
   "docker stop $GAME_CONTAINER_NAME 2>/dev/null || true && docker rm $GAME_CONTAINER_NAME 2>/dev/null || true"
