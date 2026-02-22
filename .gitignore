@@ -3,3 +3,6 @@ backups/
 .DS_Store
 .playwright-mcp/
 .cache/
+
+CLAUDE.md
+.mcp.json
