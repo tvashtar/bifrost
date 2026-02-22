@@ -60,12 +60,12 @@ game_docker_env_flags() {
   echo " -e SERVER_PUBLIC=\"$SERVER_PUBLIC\""
   echo " -e BACKUPS_CRON=\"*/15 * * * *\""
   echo " -e BACKUPS_MAX_COUNT=5"
-  [ -n "$MODIFIER_COMBAT" ]       && echo " -e MODIFIER_COMBAT=\"$MODIFIER_COMBAT\""
-  [ -n "$MODIFIER_DEATHPENALTY" ] && echo " -e MODIFIER_DEATHPENALTY=\"$MODIFIER_DEATHPENALTY\""
-  [ -n "$MODIFIER_RESOURCES" ]    && echo " -e MODIFIER_RESOURCES=\"$MODIFIER_RESOURCES\""
-  [ -n "$MODIFIER_RAIDS" ]        && echo " -e MODIFIER_RAIDS=\"$MODIFIER_RAIDS\""
-  [ -n "$MODIFIER_PORTALS" ]      && echo " -e MODIFIER_PORTALS=\"$MODIFIER_PORTALS\""
-  [ -n "$MODIFIER_PRESET" ]       && echo " -e MODIFIER_PRESET=\"$MODIFIER_PRESET\""
+  [ -n "$MODIFIER_COMBAT" ]       && echo " -e MODIFIER_COMBAT=\"$MODIFIER_COMBAT\"" || true
+  [ -n "$MODIFIER_DEATHPENALTY" ] && echo " -e MODIFIER_DEATHPENALTY=\"$MODIFIER_DEATHPENALTY\"" || true
+  [ -n "$MODIFIER_RESOURCES" ]    && echo " -e MODIFIER_RESOURCES=\"$MODIFIER_RESOURCES\"" || true
+  [ -n "$MODIFIER_RAIDS" ]        && echo " -e MODIFIER_RAIDS=\"$MODIFIER_RAIDS\"" || true
+  [ -n "$MODIFIER_PORTALS" ]      && echo " -e MODIFIER_PORTALS=\"$MODIFIER_PORTALS\"" || true
+  [ -n "$MODIFIER_PRESET" ]       && echo " -e MODIFIER_PRESET=\"$MODIFIER_PRESET\"" || true
 }
 
 game_validate_config() {

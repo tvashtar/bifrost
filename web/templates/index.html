@@ -759,7 +759,16 @@
           buffer = parts.pop();
 
           for (const part of parts) {
-            if (part.startsWith("event: done")) continue;
+            if (part.startsWith("event: done")) {
+              const dMatch = part.match(/^data: (.*)$/m);
+              if (dMatch) {
+                try {
+                  const result = JSON.parse(dMatch[1]);
+                  if (!result.success) appendLog("\n[FAILED] Command exited with an error.");
+                } catch (_) {}
+              }
+              continue;
+            }
             const match = part.match(/^data: (.*)$/m);
             if (match) appendLog(match[1]);
           }
@@ -898,7 +907,16 @@
           const parts = buffer.split("\n\n");
           buffer = parts.pop();
           for (const part of parts) {
-            if (part.startsWith("event: done")) continue;
+            if (part.startsWith("event: done")) {
+              const dMatch = part.match(/^data: (.*)$/m);
+              if (dMatch) {
+                try {
+                  const result = JSON.parse(dMatch[1]);
+                  if (!result.success) appendLog("\n[FAILED] Command exited with an error.");
+                } catch (_) {}
+              }
+              continue;
+            }
             const match = part.match(/^data: (.*)$/m);
             if (match) appendLog(match[1]);
           }

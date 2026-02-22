@@ -54,7 +54,7 @@ game_docker_env_flags() {
   echo " -e GAMEMODE=\"$MC_GAMEMODE\""
   echo " -e MEMORY=\"$MC_MEMORY\""
   echo " -e MOTD=\"$MC_MOTD\""
-  [ -n "$MC_OPS" ] && echo " -e OPS=\"$MC_OPS\""
+  [ -n "$MC_OPS" ] && echo " -e OPS=\"$MC_OPS\"" || true
 }
 
 game_validate_config() {
