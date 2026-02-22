@@ -30,10 +30,20 @@ fi
 mkdir -p "$BACKUP_DIR"
 
 REMOTE_PATH="${GAME_DATA_MOUNT}/${GAME_WORLD_SUBDIR}"
+TMPFILE="$BACKUP_DIR/.${BACKUP_FILE}.tmp"
 echo "==> Streaming backup of $REMOTE_PATH from server..."
 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --ssh-flag="-T" -- \
-  "sudo tar cf - -C ${REMOTE_PATH}/ --exclude='*_backup_*' --exclude='*.old' ." \
-  | gzip > "$BACKUP_DIR/$BACKUP_FILE"
+  "sudo tar cf - -C '${REMOTE_PATH}/' --exclude='*_backup_*' --exclude='*.old' ." \
+  | gzip > "$TMPFILE"
+
+# Verify the backup is a valid tarball before finalizing
+if ! tar tzf "$TMPFILE" > /dev/null 2>&1; then
+  rm -f "$TMPFILE"
+  echo "ERROR: Backup file is corrupt or empty. Deleted partial file."
+  exit 1
+fi
+
+mv "$TMPFILE" "$BACKUP_DIR/$BACKUP_FILE"
 
 echo ""
 echo "==> Backup saved to $BACKUP_DIR/$BACKUP_FILE"

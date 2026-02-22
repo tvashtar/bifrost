@@ -130,13 +130,7 @@ if [ -n "$RESTORE_FILE" ]; then
   step_start
   echo "==> Uploading world backup to server..."
   # Wait for SSH and data disk mount to be available
-  for i in $(seq 1 24); do
-    if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-      "mountpoint -q $GAME_DATA_MOUNT" 2>/dev/null; then
-      break
-    fi
-    sleep 5
-  done
+  wait_for_ssh
   gcloud compute scp "$RESTORE_FILE" "$VM_NAME:/tmp/${GAME_ID}-restore.tar.gz" \
     --zone="$ZONE" --quiet
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
@@ -150,11 +144,11 @@ step_start
 echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready..."
 
 POLL_INTERVAL=10
-BOOT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BOOT_TS=$(get_vm_timestamp)
 elapsed=0
 while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' $GAME_CONTAINER_NAME 2>&1 | grep -q '$GAME_READY_SIGNAL'" 2>/dev/null; then
+    "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
     step_end
     TOTAL_TIME=$(($(date +%s) - SETUP_START))
     echo ""
@@ -181,3 +175,4 @@ echo "    Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))
 echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
 echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f $GAME_CONTAINER_NAME'"
 echo "    Stop server: ./bifrost${GAME:+ --game=$GAME} stop"
+exit 1

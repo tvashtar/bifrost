@@ -35,13 +35,13 @@ echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready (this can take 2-8 m
 
 # Capture the current timestamp so we only match log lines from THIS boot,
 # not stale lines from a previous run still in the container's log history.
-BOOT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BOOT_TS=$(get_vm_timestamp)
 
 elapsed=0
 while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
   # Check docker logs since this boot for the real ready signal
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' $GAME_CONTAINER_NAME 2>&1 | grep -q '$GAME_READY_SIGNAL'" 2>/dev/null; then
+    "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
     step_end
     TOTAL_TIME=$(($(date +%s) - START_TIME))
     echo ""
@@ -67,3 +67,4 @@ echo "    Total time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))
 echo "    The server may still be starting."
 echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
 echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f $GAME_CONTAINER_NAME'"
+exit 1

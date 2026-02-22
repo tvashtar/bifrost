@@ -508,6 +508,13 @@
       text-transform: uppercase;
       animation: textFuzz 4s ease infinite;
     }
+    .footer-link {
+      color: #00ffc8;
+      text-decoration: none;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    .footer-link:hover { opacity: 1; }
 
     @keyframes textFuzz {
       0%, 85% { filter: blur(0px); opacity: 1; }
@@ -533,7 +540,12 @@
       <div class="divider"></div>
     </div>
     <div class="games" id="games"></div>
-    <div class="footer">SYS.ONLINE // BIFROST GATEWAY v1.0</div>
+    <div class="footer">
+      SYS.ONLINE // BIFROST GATEWAY {{ version }}
+      {% if gcp_project %}
+        // <a href="https://console.cloud.google.com/compute/instances?project={{ gcp_project }}" target="_blank" rel="noopener" class="footer-link">Instance List</a>
+      {% endif %}
+    </div>
   </div>
 
   <!-- Confirm dialog -->

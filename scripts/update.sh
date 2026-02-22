@@ -11,7 +11,8 @@ STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='g
 if [ "$STATUS" != "RUNNING" ]; then
   echo "==> VM is not running. Starting it first..."
   gcloud compute instances start "$VM_NAME" --zone="$ZONE" --quiet
-  sleep 10
+  echo "==> Waiting for VM to be ready..."
+  wait_for_ssh
 fi
 
 IP=$(gcloud compute instances describe "$VM_NAME" \
@@ -30,11 +31,11 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
 echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready..."
 
 POLL_INTERVAL=5
-BOOT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BOOT_TS=$(get_vm_timestamp)
 elapsed=0
 while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' $GAME_CONTAINER_NAME 2>&1 | grep -q '$GAME_READY_SIGNAL'" 2>/dev/null; then
+    "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
     echo ""
     echo "==> Update complete! Server is ready."
     echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
@@ -53,3 +54,4 @@ echo ""
 echo "==> Timed out waiting for readiness (server may still be updating)."
 echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
 echo "    Check logs: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'docker logs -f $GAME_CONTAINER_NAME'"
+exit 1

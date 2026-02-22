@@ -54,6 +54,33 @@ write_modifiers_cache() {
   echo "$json" > "$cache_file"
 }
 
+# Wait for SSH and data disk to be ready on the VM.
+# Usage: wait_for_ssh [max_attempts]  (default: 24 = 2 minutes)
+wait_for_ssh() {
+  local max_attempts="${1:-24}"
+  for i in $(seq 1 "$max_attempts"); do
+    if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+      "mountpoint -q '$GAME_DATA_MOUNT'" 2>/dev/null; then
+      return 0
+    fi
+    sleep 5
+  done
+  echo "ERROR: Timed out waiting for VM SSH/disk to be ready."
+  return 1
+}
+
+# Get a UTC timestamp from the VM (avoids local clock skew).
+# Falls back to local time if SSH fails.
+get_vm_timestamp() {
+  local ts
+  ts=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    "date -u +%Y-%m-%dT%H:%M:%SZ" 2>/dev/null) || true
+  if [ -z "$ts" ]; then
+    ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  fi
+  echo "$ts"
+}
+
 # Generate the startup script that runs on the GCP VM.
 # Called by setup.sh and restore.sh to avoid duplicating the heredoc.
 # Usage: generate_startup_script "/path/to/output/file"
@@ -86,8 +113,8 @@ if ! blkid "\$DATA_DEV" &>/dev/null; then
 fi
 
 # Stop container if auto-restarted before disk is mounted (race condition)
-if docker container inspect ${GAME_CONTAINER_NAME} &>/dev/null; then
-  docker stop ${GAME_CONTAINER_NAME} 2>/dev/null || true
+if docker container inspect "${GAME_CONTAINER_NAME}" &>/dev/null; then
+  docker stop "${GAME_CONTAINER_NAME}" 2>/dev/null || true
 fi
 
 # Mount the data disk
@@ -95,21 +122,21 @@ mkdir -p "\$DATA_MNT"
 mount -o discard,defaults "\$DATA_DEV" "\$DATA_MNT" || true
 
 # Start existing container, or create a new one on first boot
-if docker container inspect ${GAME_CONTAINER_NAME} &>/dev/null; then
+if docker container inspect "${GAME_CONTAINER_NAME}" &>/dev/null; then
   echo "Starting existing ${GAME_DISPLAY_NAME} container..."
-  docker start ${GAME_CONTAINER_NAME}
+  docker start "${GAME_CONTAINER_NAME}"
 else
   echo "First boot — pulling image and creating container..."
-  docker pull ${GAME_IMAGE}
-  docker run -d \
-    --name ${GAME_CONTAINER_NAME} \
-    --restart unless-stopped \
-    --stop-timeout ${GAME_STOP_TIMEOUT} \
-    ${GAME_DOCKER_EXTRA} \
-    ${port_flags} \
-    ${env_flags} \
-    -v "\$DATA_MNT:${GAME_DATA_VOLUME}" \
-    ${GAME_IMAGE}
+  docker pull "${GAME_IMAGE}"
+  docker run -d \\
+    --name "${GAME_CONTAINER_NAME}" \\
+    --restart unless-stopped \\
+    --stop-timeout ${GAME_STOP_TIMEOUT} \\
+    ${GAME_DOCKER_EXTRA} \\
+    ${port_flags} \\
+    ${env_flags} \\
+    -v "\$DATA_MNT:${GAME_DATA_VOLUME}" \\
+    "${GAME_IMAGE}"
 fi
 EOF
 }

@@ -2,16 +2,37 @@
 """Minimal local web UI for bifrost."""
 
 import json
+import os
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, Response, render_template, jsonify, request
 
 app = Flask(__name__)
-BIFROST_CMD = str(Path(__file__).resolve().parent.parent / "bifrost")
-CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+BIFROST_CMD = str(REPO_ROOT / "bifrost")
+CACHE_DIR = REPO_ROOT / ".cache"
 GAMES = ["valheim", "minecraft", "7dtd", "enshrouded"]
+
+load_dotenv(REPO_ROOT / ".env")
+GCP_PROJECT = os.environ.get("GCP_PROJECT", "")
+
+
+def get_version():
+    """Get version from most recent git tag, or 'dev' if none."""
+    try:
+        return subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture_output=True, text=True, cwd=REPO_ROOT, timeout=5,
+        ).stdout.strip() or "dev"
+    except Exception:
+        return "dev"
+
+
+VERSION = get_version()
 
 
 def run_bifrost(game, command, timeout=30):
@@ -40,17 +61,25 @@ def stream_bifrost(game, action):
         bufsize=1,
     )
 
-    for line in process.stdout:
-        yield f"data: {line.rstrip()}\n\n"
+    try:
+        for line in process.stdout:
+            yield f"data: {line.rstrip()}\n\n"
 
-    process.wait()
-    success = process.returncode == 0
-    yield f"event: done\ndata: {json.dumps({'success': success})}\n\n"
+        process.wait()
+        success = process.returncode == 0
+        yield f"event: done\ndata: {json.dumps({'success': success})}\n\n"
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", games=GAMES)
+    return render_template("index.html", games=GAMES, version=VERSION, gcp_project=GCP_PROJECT)
 
 
 @app.route("/api/status/<game>")
@@ -69,17 +98,20 @@ def status(game):
 
 @app.route("/api/status")
 def status_all():
-    """Get status for all games."""
-    results = {}
-    for game in GAMES:
+    """Get status for all games (parallel)."""
+    def fetch_status(game):
         success, output = run_bifrost(game, "status")
         if success:
             try:
-                results[game] = json.loads(output.strip())
+                return game, json.loads(output.strip())
             except json.JSONDecodeError:
-                results[game] = {"status": "unknown"}
-        else:
-            results[game] = {"status": "error"}
+                return game, {"status": "unknown"}
+        return game, {"status": "error"}
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(GAMES)) as pool:
+        for game, data in pool.map(fetch_status, GAMES):
+            results[game] = data
     return jsonify(results)
 
 
@@ -114,12 +146,20 @@ def stream_modifiers(game, flags):
     process.stdin.flush()
     process.stdin.close()
 
-    for line in process.stdout:
-        yield f"data: {line.rstrip()}\n\n"
+    try:
+        for line in process.stdout:
+            yield f"data: {line.rstrip()}\n\n"
 
-    process.wait()
-    success = process.returncode == 0
-    yield f"event: done\ndata: {json.dumps({'success': success})}\n\n"
+        process.wait()
+        success = process.returncode == 0
+        yield f"event: done\ndata: {json.dumps({'success': success})}\n\n"
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
 
 @app.route("/api/<game>/modifiers")

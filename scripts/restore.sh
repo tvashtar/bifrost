@@ -50,7 +50,8 @@ STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='g
 if [ "$STATUS" != "RUNNING" ]; then
   echo "==> VM is not running. Starting it..."
   gcloud compute instances start "$VM_NAME" --zone="$ZONE" --quiet
-  sleep 10
+  echo "==> Waiting for VM to be ready..."
+  wait_for_ssh
 fi
 
 echo "==> Stopping $GAME_DISPLAY_NAME container..."
@@ -88,7 +89,13 @@ if [ "$NEEDS_RECREATE" = true ]; then
 
   # Recreate container with new config
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-    "docker rm $GAME_CONTAINER_NAME && sudo google_metadata_script_runner startup"
+    "docker rm '$GAME_CONTAINER_NAME'" || {
+    echo "WARNING: Failed to remove old container. Trying force remove..."
+    gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+      "docker rm -f '$GAME_CONTAINER_NAME'" || true
+  }
+  gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    "sudo google_metadata_script_runner startup"
 else
   echo "==> Starting $GAME_DISPLAY_NAME container..."
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
@@ -97,11 +104,11 @@ fi
 
 echo "==> Waiting for server to be ready..."
 POLL_INTERVAL=5
-BOOT_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BOOT_TS=$(get_vm_timestamp)
 elapsed=0
 while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
   if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' $GAME_CONTAINER_NAME 2>&1 | grep -q '$GAME_READY_SIGNAL'" 2>/dev/null; then
+    "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
     IP=$(gcloud compute instances describe "$VM_NAME" \
       --zone="$ZONE" \
       --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
@@ -125,3 +132,4 @@ done
 
 echo ""
 echo "==> Timed out waiting for readiness. Check logs manually."
+exit 1

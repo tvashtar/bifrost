@@ -111,7 +111,7 @@ read_config_from_metadata() {
   # Parse -e KEY="VAL" patterns from the startup script
   parse_env() {
     local key="$1"
-    echo "$startup_script" | grep -oP " -e ${key}=\"\K[^\"]*" || echo ""
+    echo "$startup_script" | sed -n "s/.*-e ${key}=\"\([^\"]*\)\".*/\1/p" | tail -1
   }
 
   SERVER_NAME=$(parse_env "SERVER_NAME")
@@ -162,7 +162,7 @@ read_modifiers_from_cache() {
     json=$(cat "$cache_file")
     # Parse simple {"key":"val"} JSON — empty string if key missing
     parse_cache() {
-      echo "$json" | grep -oP "\"$1\":\\s*\"\\K[^\"]*" || echo ""
+      echo "$json" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | tail -1
     }
     CURRENT_COMBAT=$(parse_cache "combat")
     CURRENT_DEATHPENALTY=$(parse_cache "deathpenalty")
@@ -274,17 +274,45 @@ gcloud compute instances add-metadata "$VM_NAME" \
   --metadata-from-file=startup-script="$STARTUP_FILE"
 
 if [ "$VM_STATUS" = "RUNNING" ]; then
-  # VM is running: remove old container and restart
+  # VM is running: gracefully stop, remove, and recreate container
+  echo "==> Stopping container gracefully..."
+  gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    "docker stop --time ${GAME_STOP_TIMEOUT} '$GAME_CONTAINER_NAME' 2>/dev/null || true"
   echo "==> Removing old container..."
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-    "docker rm -f $GAME_CONTAINER_NAME 2>/dev/null || true"
+    "docker rm '$GAME_CONTAINER_NAME' 2>/dev/null || true"
 
-  echo "==> Starting server with new modifiers..."
-  "$SCRIPT_DIR/start.sh"
+  # Re-run the startup script to create a fresh container with new config
+  echo "==> Re-running startup script (fresh container with new modifiers)..."
+  gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
+    'sudo google_metadata_script_runner startup'
 
-  echo ""
-  echo "==> Modifiers updated successfully!"
-  echo "==> Server is starting with new difficulty settings."
+  echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready..."
+  POLL_INTERVAL=5
+  BOOT_TS=$(get_vm_timestamp)
+  elapsed=0
+  while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
+    if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
+      "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
+      IP=$(gcloud compute instances describe "$VM_NAME" \
+        --zone="$ZONE" \
+        --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+      echo ""
+      echo "==> Modifiers updated successfully!"
+      echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
+      break
+    fi
+    sleep $POLL_INTERVAL
+    elapsed=$((elapsed + POLL_INTERVAL))
+    if (( elapsed % 30 == 0 )); then
+      echo "    ... still waiting (${elapsed}s elapsed)"
+    fi
+  done
+
+  if [ $elapsed -ge $GAME_READY_TIMEOUT ]; then
+    echo ""
+    echo "==> Timed out waiting for readiness. Modifiers were updated but server may still be starting."
+  fi
 else
   # VM is stopped: just update metadata
   echo ""
