@@ -20,13 +20,13 @@ export GAME
 
 COMMAND="${ARGS[0]:-}"
 COMMAND_ARGS=()
-if [ ${#ARGS[@]} -gt 1 ]; then
+if [[ ${#ARGS[@]} -gt 1 ]]; then
   COMMAND_ARGS=("${ARGS[@]:1}")
 fi
 
 case "$COMMAND" in
   start|stop|setup|backup|restore|teardown|update|status)
-    exec "$SCRIPTS_DIR/$COMMAND.sh" "${COMMAND_ARGS[@]}"
+    exec "$SCRIPTS_DIR/$COMMAND.sh" ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   # Valheim-only commands
   export-world)
@@ -34,21 +34,21 @@ case "$COMMAND" in
       echo "ERROR: export-world is only available for Valheim."
       exit 1
     fi
-    exec "$SCRIPTS_DIR/export-world.sh" "${COMMAND_ARGS[@]}"
+    exec "$SCRIPTS_DIR/export-world.sh" ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   fetch-gportals)
     if [ "$GAME" != "valheim" ]; then
       echo "ERROR: fetch-gportals is only available for Valheim."
       exit 1
     fi
-    exec "$SCRIPTS_DIR/fetch-gportals-backup.sh" "${COMMAND_ARGS[@]}"
+    exec "$SCRIPTS_DIR/fetch-gportals-backup.sh" ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   update-modifiers)
     if [ "$GAME" != "valheim" ]; then
       echo "ERROR: update-modifiers is only available for Valheim."
       exit 1
     fi
-    exec "$SCRIPTS_DIR/update-modifiers.sh" "${COMMAND_ARGS[@]}"
+    exec "$SCRIPTS_DIR/update-modifiers.sh" ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   *)
     echo "Usage: bifrost [--game=valheim|minecraft|7dtd|enshrouded] <command>"
