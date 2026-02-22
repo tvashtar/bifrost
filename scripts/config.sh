@@ -77,7 +77,7 @@ wait_for_ssh() {
 get_vm_timestamp() {
   local ts
   ts=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-    "date -u +%Y-%m-%dT%H:%M:%SZ" 2>/dev/null) || true
+    "date -u +%Y-%m-%dT%H:%M:%SZ" 2>/dev/null | tr -d '\r') || true
   if [ -z "$ts" ]; then
     ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   fi
