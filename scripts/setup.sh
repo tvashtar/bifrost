@@ -143,30 +143,19 @@ echo "    $GAME_BOOT_MESSAGE"
 step_start
 echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready..."
 
-POLL_INTERVAL=10
 BOOT_TS=$(get_vm_timestamp)
-elapsed=0
-while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
-  if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
-    step_end
-    TOTAL_TIME=$(($(date +%s) - SETUP_START))
-    echo ""
-    echo "==> Server is ready!"
-    echo "    Total setup time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
-    echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
-    echo "    Password: (the one you set)"
-    echo ""
-    echo "    Stop server: ./bifrost${GAME:+ --game=$GAME} stop"
-    exit 0
-  fi
-
-  sleep $POLL_INTERVAL
-  elapsed=$((elapsed + POLL_INTERVAL))
-  if (( elapsed % 30 == 0 )); then
-    echo "    ... still waiting (${elapsed}s elapsed)"
-  fi
-done
+if wait_for_ready "$BOOT_TS" 10; then
+  step_end
+  TOTAL_TIME=$(($(date +%s) - SETUP_START))
+  echo ""
+  echo "==> Server is ready!"
+  echo "    Total setup time: ${TOTAL_TIME}s ($((TOTAL_TIME / 60))m $((TOTAL_TIME % 60))s)"
+  echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
+  echo "    Password: (the one you set)"
+  echo ""
+  echo "    Stop server: ./bifrost${GAME:+ --game=$GAME} stop"
+  exit 0
+fi
 
 TOTAL_TIME=$(($(date +%s) - SETUP_START))
 echo ""

@@ -84,6 +84,42 @@ get_vm_timestamp() {
   echo "$ts"
 }
 
+# Wait for the game server container to log the ready signal.
+# Streams the latest log line each poll so the user can see progress.
+# Usage: wait_for_ready <boot_timestamp> [poll_interval]
+wait_for_ready() {
+  local boot_ts="$1"
+  local poll_interval="${2:-5}"
+  local elapsed=0
+  local last_line=""
+
+  while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
+    # Check ALL logs since boot for the ready signal (not just tail)
+    if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
+      "docker logs --since '$boot_ts' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
+      return 0
+    fi
+
+    # Fetch last line for display (strip ANSI codes, trim)
+    local latest
+    latest=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
+      "docker logs --since '$boot_ts' --tail 1 '$GAME_CONTAINER_NAME' 2>&1" 2>/dev/null) || true
+    local current_line
+    current_line=$(echo "$latest" | sed 's/\x1b\[[0-9;]*m//g' | xargs)
+    if [ -n "$current_line" ] && [ "$current_line" != "$last_line" ]; then
+      echo "    [${elapsed}s] $current_line"
+      last_line="$current_line"
+    elif (( elapsed > 0 && elapsed % 30 == 0 )); then
+      echo "    ... still waiting (${elapsed}s elapsed)"
+    fi
+
+    sleep "$poll_interval"
+    elapsed=$((elapsed + poll_interval))
+  done
+
+  return 1
+}
+
 # Generate the startup script that runs on the GCP VM.
 # Called by setup.sh and restore.sh to avoid duplicating the heredoc.
 # Usage: generate_startup_script "/path/to/output/file"

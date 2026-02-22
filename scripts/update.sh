@@ -40,24 +40,13 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
 
 echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready..."
 
-POLL_INTERVAL=5
-elapsed=0
-while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
-  if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
-    echo ""
-    echo "==> Update complete! Server is ready."
-    echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
-    echo ""
-    exit 0
-  fi
-
-  sleep $POLL_INTERVAL
-  elapsed=$((elapsed + POLL_INTERVAL))
-  if (( elapsed % 30 == 0 )); then
-    echo "    ... still waiting (${elapsed}s elapsed)"
-  fi
-done
+if wait_for_ready "$BOOT_TS" 5; then
+  echo ""
+  echo "==> Update complete! Server is ready."
+  echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
+  echo ""
+  exit 0
+fi
 
 echo ""
 echo "==> Timed out waiting for readiness (server may still be updating)."
