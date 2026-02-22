@@ -251,7 +251,6 @@
     .actions {
       display: flex;
       gap: 10px;
-      margin-bottom: 14px;
     }
 
     .actions button {
@@ -309,9 +308,35 @@
       box-shadow: 0 0 15px rgba(0, 128, 255, 0.3);
     }
 
-    /* Log output */
-    .log-wrap { display: none; }
-    .log-wrap.active { display: block; }
+    /* Log panel */
+    .log-panel { display: none; margin-top: 24px; }
+    .log-panel.active { display: block; }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .log-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.75em;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #8aaa9e;
+    }
+    .log-clear {
+      background: none;
+      border: none;
+      color: #555570;
+      cursor: pointer;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72em;
+      letter-spacing: 0.05em;
+      transition: color 0.2s;
+    }
+    .log-clear:hover { color: #c0f0e8; }
 
     .output {
       background: #050508;
@@ -322,27 +347,12 @@
       font-size: 0.75em;
       white-space: pre-wrap;
       overflow-y: auto;
+      max-height: 400px;
       line-height: 1.5;
       color: #5a9a8a;
     }
-    .output.collapsed { max-height: 7.8em; }
-    .output.expanded { max-height: 400px; }
 
-    .log-toggle {
-      display: none;
-      background: none;
-      border: none;
-      color: #0080ff;
-      cursor: pointer;
-      font-family: 'Share Tech Mono', monospace;
-      font-size: 0.72em;
-      padding: 6px 0;
-      margin-top: 4px;
-      letter-spacing: 0.05em;
-    }
-    .log-toggle:hover { color: #00ffc8; }
-
-    .streaming .output::after {
+    .log-panel.streaming .output::after {
       content: " \25CF";
       animation: pulse 1s infinite;
       color: #00ff88;
@@ -540,6 +550,13 @@
       <div class="divider"></div>
     </div>
     <div class="games" id="games"></div>
+    <div class="log-panel" id="log-panel">
+      <div class="log-header">
+        <span class="log-title" id="log-title">Log</span>
+        <button class="log-clear" onclick="clearLog()">[ clear ]</button>
+      </div>
+      <div class="output" id="log-output"></div>
+    </div>
     <div class="footer">
       SYS.ONLINE // BIFROST GATEWAY {{ version }}
       {% if gcp_project %}
@@ -642,27 +659,33 @@
                 </div>
               </div>
             </div>
-            <div class="log-wrap" id="log-wrap-${g}">
-              <div class="output collapsed" id="out-${g}"></div>
-              <button class="log-toggle" id="toggle-${g}" onclick="toggleLog('${g}')">[ show full log ]</button>
-            </div>
           </div>
         </div>`;
     }
 
     document.getElementById("games").innerHTML = GAMES.map(card).join("");
 
-    function toggleLog(g) {
-      const out = document.getElementById(`out-${g}`);
-      const btn = document.getElementById(`toggle-${g}`);
-      if (out.classList.contains("collapsed")) {
-        out.classList.replace("collapsed", "expanded");
-        btn.textContent = "[ collapse ]";
-      } else {
-        out.classList.replace("expanded", "collapsed");
-        btn.textContent = "[ show full log ]";
-        out.scrollTop = out.scrollHeight;
-      }
+    // Shared log panel
+    const logPanel = document.getElementById("log-panel");
+    const logTitle = document.getElementById("log-title");
+    const logOutput = document.getElementById("log-output");
+
+    function showLog(game, action) {
+      logOutput.textContent = "";
+      logTitle.textContent = `${DISPLAY[game]} // ${action}`;
+      logPanel.classList.add("active", "streaming");
+      logPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    function endLog() {
+      logPanel.classList.remove("streaming");
+    }
+    function appendLog(text) {
+      logOutput.textContent += text + "\n";
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+    function clearLog() {
+      logPanel.classList.remove("active", "streaming");
+      logOutput.textContent = "";
     }
 
     async function refresh() {
@@ -698,24 +721,13 @@
       const btns = document.querySelectorAll(`#card-${g} button`);
       btns.forEach(b => b.disabled = true);
 
-      const wrap = document.getElementById(`log-wrap-${g}`);
-      const out = document.getElementById(`out-${g}`);
-      const toggle = document.getElementById(`toggle-${g}`);
-
       if (action === "start") {
         const b = document.getElementById(`badge-${g}`);
         b.textContent = "launching";
         b.className = "badge badge-launching";
       }
 
-      wrap.classList.add("active");
-      wrap.classList.add("streaming");
-      out.textContent = "";
-      out.classList.replace("expanded", "collapsed");
-      toggle.style.display = "none";
-      toggle.textContent = "[ show full log ]";
-
-      let lineCount = 0;
+      showLog(g, action);
 
       try {
         const r = await fetch(`/api/${g}/${action}`, { method: "POST" });
@@ -732,25 +744,16 @@
           buffer = parts.pop();
 
           for (const part of parts) {
-            if (part.startsWith("event: done")) {
-              continue;
-            }
+            if (part.startsWith("event: done")) continue;
             const match = part.match(/^data: (.*)$/m);
-            if (match) {
-              out.textContent += match[1] + "\n";
-              lineCount++;
-              if (lineCount > 5) {
-                toggle.style.display = "inline-block";
-              }
-              out.scrollTop = out.scrollHeight;
-            }
+            if (match) appendLog(match[1]);
           }
         }
       } catch (e) {
-        out.textContent += `\nError: ${e}\n`;
+        appendLog(`\nError: ${e}`);
       }
 
-      wrap.classList.remove("streaming");
+      endLog();
       btns.forEach(b => b.disabled = false);
       activeActions.delete(g);
       refresh();
@@ -820,17 +823,9 @@
       activeActions.add(g);
       const btns = document.querySelectorAll(`#card-${g} button`);
       btns.forEach(b => b.disabled = true);
-      const wrap = document.getElementById(`log-wrap-${g}`);
-      const out = document.getElementById(`out-${g}`);
-      const toggle = document.getElementById(`toggle-${g}`);
 
-      wrap.classList.add("active");
-      wrap.classList.add("streaming");
-      out.textContent = "";
-      out.classList.replace("expanded", "collapsed");
-      toggle.style.display = "none";
+      showLog(g, "update-modifiers");
 
-      let lineCount = 0;
       try {
         const r = await fetch(`/api/${g}/update-modifiers`, {
           method: "POST",
@@ -849,19 +844,14 @@
           for (const part of parts) {
             if (part.startsWith("event: done")) continue;
             const match = part.match(/^data: (.*)$/m);
-            if (match) {
-              out.textContent += match[1] + "\n";
-              lineCount++;
-              if (lineCount > 5) toggle.style.display = "inline-block";
-              out.scrollTop = out.scrollHeight;
-            }
+            if (match) appendLog(match[1]);
           }
         }
       } catch (e) {
-        out.textContent += `\nError: ${e}\n`;
+        appendLog(`\nError: ${e}`);
       }
 
-      wrap.classList.remove("streaming");
+      endLog();
       btns.forEach(b => b.disabled = false);
       activeActions.delete(g);
       refresh();
