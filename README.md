@@ -2,6 +2,8 @@
 
 Multi-game dedicated server manager on GCP Compute Engine — cheap pay-per-use hosting for Valheim, Minecraft, 7 Days to Die, and Enshrouded.
 
+![Bifrost Web UI](docs/demo.gif)
+
 ## Supported Games
 
 | Game | Docker Image | Ports | Default VM | Min VM |
@@ -87,8 +89,6 @@ cd web
 uv run app.py
 # Open http://localhost:5000
 ```
-
-![Bifrost Web UI](docs/demo.gif)
 
 ## Local Testing
 
