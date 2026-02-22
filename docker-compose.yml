@@ -36,23 +36,6 @@ services:
     volumes:
       - minecraft-data:/data
 
-  7dtd:
-    image: vinanrra/7dtd-server:latest
-    container_name: 7dtd-server
-    profiles: ["7dtd"]
-    restart: unless-stopped
-    stop_grace_period: 60s
-    ports:
-      - "26900-26902:26900-26902/udp"
-      - "26900:26900/tcp"
-    environment:
-      - START_MODE=1
-      - VERSION=${SDTD_VERSION:-stable}
-      - PUID=1000
-      - PGID=1000
-    volumes:
-      - 7dtd-data:/home/sdtdserver/.local/share/7DaysToDie
-
   enshrouded:
     image: mornedhels/enshrouded-server:latest
     container_name: enshrouded-server
@@ -72,5 +55,4 @@ services:
 volumes:
   valheim-data:
   minecraft-data:
-  7dtd-data:
   enshrouded-data:

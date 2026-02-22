@@ -15,7 +15,7 @@ app = Flask(__name__)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BIFROST_CMD = str(REPO_ROOT / "bifrost")
 CACHE_DIR = REPO_ROOT / ".cache"
-GAMES = ["valheim", "minecraft", "7dtd", "enshrouded"]
+GAMES = ["valheim", "minecraft", "enshrouded"]
 
 load_dotenv(REPO_ROOT / ".env")
 GCP_PROJECT = os.environ.get("GCP_PROJECT", "")

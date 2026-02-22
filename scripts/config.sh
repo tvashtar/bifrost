@@ -100,12 +100,15 @@ wait_for_ready() {
       return 0
     fi
 
-    # Fetch last line for display (strip ANSI codes, trim)
-    local latest
-    latest=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-      "docker logs --since '$boot_ts' --tail 1 '$GAME_CONTAINER_NAME' 2>&1" 2>/dev/null) || true
+    # Fetch recent lines, strip ANSI, pick the last meaningful one (has [tag])
+    local recent
+    recent=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
+      "docker logs --since '$boot_ts' --tail 10 '$GAME_CONTAINER_NAME' 2>&1" 2>/dev/null | \
+      sed 's/\x1b\[[0-9;]*m//g') || true
     local current_line
-    current_line=$(echo "$latest" | sed 's/\x1b\[[0-9;]*m//g' | xargs)
+    current_line=$(echo "$recent" | grep '\[' | tail -1 | xargs)
+    # Fall back to last non-empty line if no tagged lines found
+    [ -z "$current_line" ] && current_line=$(echo "$recent" | sed '/^\s*$/d' | tail -1 | xargs)
     if [ -n "$current_line" ] && [ "$current_line" != "$last_line" ]; then
       echo "    [${elapsed}s] $current_line"
       last_line="$current_line"

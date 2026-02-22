@@ -51,7 +51,7 @@ case "$COMMAND" in
     exec "$SCRIPTS_DIR/update-modifiers.sh" ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
     ;;
   *)
-    echo "Usage: bifrost [--game=valheim|minecraft|7dtd|enshrouded] <command>"
+    echo "Usage: bifrost [--game=valheim|minecraft|enshrouded] <command>"
     echo ""
     echo "Commands:"
     echo "  setup       One-time infrastructure setup"

@@ -1,6 +1,6 @@
 # bifrost
 
-Multi-game dedicated server manager on GCP Compute Engine — cheap pay-per-use hosting for Valheim, Minecraft, 7 Days to Die, and Enshrouded.
+Multi-game dedicated server manager on GCP Compute Engine — cheap pay-per-use hosting for Valheim, Minecraft, and Enshrouded.
 
 ![Bifrost Web UI](docs/bifrost_screen.png)
 
@@ -10,7 +10,6 @@ Multi-game dedicated server manager on GCP Compute Engine — cheap pay-per-use 
 |------|-------------|-------|-----------|--------|
 | Valheim | `lloesche/valheim-server` | UDP 2456-2458 | e2-small (2GB) | e2-small |
 | Minecraft | `itzg/minecraft-server` | TCP 25565 | e2-small (2GB) | e2-small |
-| 7 Days to Die | `vinanrra/7dtd-server` | UDP 26900-26902, TCP 26900 | e2-medium (4GB) | e2-medium |
 | Enshrouded | `mornedhels/enshrouded-server` | UDP 15636-15637 | e2-medium (4GB) | e2-medium |
 
 ## Why GCP Compute Engine?
@@ -48,9 +47,6 @@ SERVER_PASS='yourpass' ./bifrost setup
 # Set up a Minecraft server
 ./bifrost --game=minecraft setup
 
-# Set up a 7DTD server (auto-uses e2-medium)
-./bifrost --game=7dtd setup
-
 # Start and connect
 ./bifrost start                        # Valheim (default)
 ./bifrost --game=minecraft start       # Minecraft
@@ -60,7 +56,7 @@ The `.env` file is sourced automatically by `./bifrost` and is gitignored.
 
 ## Commands
 
-All commands accept `--game=valheim|minecraft|7dtd|enshrouded` (default: `valheim`).
+All commands accept `--game=valheim|minecraft|enshrouded` (default: `valheim`).
 
 ```bash
 ./bifrost [--game=GAME] setup [--size=small|medium] [--restore=backup.tar.gz]
@@ -95,7 +91,6 @@ uv run app.py
 ```bash
 docker compose --profile valheim up
 docker compose --profile minecraft up
-docker compose --profile 7dtd up
 docker compose --profile enshrouded up
 ```
 
@@ -105,14 +100,13 @@ Each game has its own configuration variables, VM requirements, and notes:
 
 - [Valheim](docs/valheim.md) — world modifiers, Gportals FTP, password setup
 - [Minecraft](docs/minecraft.md) — difficulty, gamemode, ops, memory
-- [7 Days to Die](docs/7dtd.md) — requires e2-medium (4GB RAM)
 - [Enshrouded](docs/enshrouded.md) — requires e2-medium (4GB RAM)
 
 ## Cost Breakdown
 
 For ~20 hours/month of play per game:
 
-| | e2-small (Valheim, MC) | e2-medium (7DTD, Enshrouded) |
+| | e2-small (Valheim, MC) | e2-medium (Enshrouded) |
 |---|---|---|
 | Compute | ~$0.34 | ~$0.67 |
 | Disk (10GB) | ~$0.40 | ~$0.40 |
@@ -131,7 +125,6 @@ Each game gets its own set of GCP resources:
 |------|-----|------|---------------|
 | Valheim | `bifrost` | `bifrost-data` | `bifrost-allow-valheim` |
 | Minecraft | `bifrost-minecraft` | `bifrost-minecraft-data` | `bifrost-allow-minecraft` |
-| 7DTD | `bifrost-7dtd` | `bifrost-7dtd-data` | `bifrost-allow-7dtd` |
 | Enshrouded | `bifrost-enshrouded` | `bifrost-enshrouded-data` | `bifrost-allow-enshrouded` |
 
 Game-specific config lives in `scripts/games/<game>.sh`. Shared logic (GCP project, startup script generation) is in `scripts/config.sh`. The `bifrost` CLI parses `--game=` and exports the `GAME` env var to all scripts.
@@ -157,6 +150,5 @@ Adds ~$3.65/mo but gives a consistent server address.
 
 - [lloesche/valheim-server-docker](https://github.com/lloesche/valheim-server-docker)
 - [itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server)
-- [vinanrra/7dtd-server](https://github.com/vinanrra/7dtd-server-docker)
 - [mornedhels/enshrouded-server](https://github.com/mornedhels/enshrouded-server)
 - [GCP Compute Engine Pricing](https://cloud.google.com/compute/all-pricing)
