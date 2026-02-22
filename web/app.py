@@ -120,14 +120,45 @@ def action(game, action):
     """Run an action (start/stop/backup) and stream output as SSE."""
     if game not in GAMES:
         return jsonify({"error": "Unknown game"}), 400
-    if action not in ("start", "stop", "backup", "update"):
+    if action not in ("start", "stop", "backup", "update", "setup", "teardown"):
         return jsonify({"error": "Invalid action"}), 400
 
+    streamer = stream_teardown(game) if action == "teardown" else stream_bifrost(game, action)
     return Response(
-        stream_bifrost(game, action),
+        streamer,
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def stream_teardown(game):
+    """Run teardown, auto-confirming the 'yes' prompt."""
+    process = subprocess.Popen(
+        [BIFROST_CMD, f"--game={game}", "teardown"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    process.stdin.write("yes\n")
+    process.stdin.flush()
+    process.stdin.close()
+
+    try:
+        for line in process.stdout:
+            yield f"data: {line.rstrip()}\n\n"
+
+        process.wait()
+        success = process.returncode == 0
+        yield f"event: done\ndata: {json.dumps({'success': success})}\n\n"
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
 
 def stream_modifiers(game, flags):

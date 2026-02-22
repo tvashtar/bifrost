@@ -111,7 +111,6 @@
       padding: 24px;
       min-height: 140px;
       position: relative;
-      overflow: hidden;
       animation: borderGlow 4s ease infinite;
       transition: border-color 0.3s, box-shadow 0.3s;
     }
@@ -149,6 +148,7 @@
       inset: 0;
       overflow: hidden;
       pointer-events: none;
+      border-radius: 4px;
     }
 
     .card-art img {
@@ -616,6 +616,19 @@
     </div>
   </div>
 
+  <!-- Teardown modal -->
+  <div class="modal-overlay" id="teardown-overlay">
+    <div class="modal">
+      <h3 id="teardown-title">Teardown</h3>
+      <p class="modal-warning">This will permanently delete the VM, disk (including all world saves), and firewall rule.</p>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="closeTeardown()">Cancel</button>
+        <button style="border-color:#0080ff;color:#0080ff;background:rgba(0,128,255,0.08);" onclick="doTeardownWithBackup()">Backup First</button>
+        <button style="border-color:#ff003c;color:#ff003c;background:rgba(255,0,60,0.08);" onclick="doTeardownNow()">Teardown</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const GAMES = {{ games | tojson }};
     const DISPLAY = {
@@ -655,6 +668,8 @@
                 <button class="btn-other" onclick="toggleDD('${g}')">Other</button>
                 <div class="dropdown-menu" id="ddm-${g}">
                   <button onclick="confirmUpdate('${g}')">Update Server</button>
+                  <button onclick="confirmSetup('${g}')">Setup</button>
+                  <button onclick="confirmTeardown('${g}')">Teardown</button>
                   ${g === "valheim" ? '<button onclick="openMod()">Modifiers</button>' : ""}
                 </div>
               </div>
@@ -786,6 +801,47 @@
     function closeConfirm() {
       document.getElementById("confirm-overlay").classList.remove("open");
       pendingConfirm = null;
+    }
+
+    // Setup confirm
+    function confirmSetup(g) {
+      document.querySelectorAll(".dropdown-menu").forEach(m => m.classList.remove("open"));
+      const badge = document.getElementById(`badge-${g}`);
+      const status = badge.className.replace("badge badge-", "");
+      document.getElementById("confirm-title").textContent = `Setup ${DISPLAY[g]}`;
+      if (status === "running" || status === "stopped") {
+        document.getElementById("confirm-msg").textContent =
+          "A deployment already exists for this game. Running setup again is safe but unnecessary.";
+      } else {
+        document.getElementById("confirm-msg").textContent =
+          "This will create a GCP VM, disk, and firewall rule.";
+      }
+      document.getElementById("confirm-overlay").classList.add("open");
+      pendingConfirm = () => { closeConfirm(); act(g, "setup"); };
+    }
+
+    // Teardown modal
+    let teardownGame = null;
+    function confirmTeardown(g) {
+      document.querySelectorAll(".dropdown-menu").forEach(m => m.classList.remove("open"));
+      teardownGame = g;
+      document.getElementById("teardown-title").textContent = `Teardown ${DISPLAY[g]}`;
+      document.getElementById("teardown-overlay").classList.add("open");
+    }
+    function closeTeardown() {
+      document.getElementById("teardown-overlay").classList.remove("open");
+      teardownGame = null;
+    }
+    async function doTeardownWithBackup() {
+      const g = teardownGame;
+      closeTeardown();
+      await act(g, "backup");
+      await act(g, "teardown");
+    }
+    function doTeardownNow() {
+      const g = teardownGame;
+      closeTeardown();
+      act(g, "teardown");
     }
 
     // Modifiers modal
