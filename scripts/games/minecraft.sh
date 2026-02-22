@@ -42,7 +42,7 @@ GAME_DOCKER_EXTRA=""
 # Minecraft server config defaults
 MC_DIFFICULTY="${MC_DIFFICULTY:-normal}"
 MC_GAMEMODE="${MC_GAMEMODE:-survival}"
-MC_MEMORY="${MC_MEMORY:-2G}"
+MC_MEMORY="${MC_MEMORY:-1G}"
 MC_MOTD="${MC_MOTD:-A Bifrost Minecraft Server}"
 MC_OPS="${MC_OPS:-}"
 SERVER_NAME="${SERVER_NAME:-Bifrost Minecraft}"

@@ -66,6 +66,7 @@ game_docker_env_flags() {
   [ -n "$MODIFIER_RAIDS" ]        && echo " -e MODIFIER_RAIDS=\"$MODIFIER_RAIDS\"" || true
   [ -n "$MODIFIER_PORTALS" ]      && echo " -e MODIFIER_PORTALS=\"$MODIFIER_PORTALS\"" || true
   [ -n "$MODIFIER_PRESET" ]       && echo " -e MODIFIER_PRESET=\"$MODIFIER_PRESET\"" || true
+  return 0
 }
 
 game_validate_config() {

@@ -47,9 +47,10 @@ SERVER_PASS="${SERVER_PASS:-}"
 game_docker_env_flags() {
   echo " -e SERVER_NAME=\"$SERVER_NAME\""
   echo " -e SERVER_SLOT_COUNT=\"$ENSHROUDED_SLOTS\""
-  [ -n "$SERVER_PASS" ] && echo " -e SERVER_PASSWORD=\"$SERVER_PASS\""
+  [ -n "${SERVER_PASS:-}" ] && echo " -e SERVER_PASSWORD=\"$SERVER_PASS\""
   echo " -e PUID=1000"
   echo " -e PGID=1000"
+  return 0
 }
 
 game_validate_config() {
