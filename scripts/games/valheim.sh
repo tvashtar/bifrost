@@ -37,7 +37,16 @@ GAME_CONNECT_PORT="2456"
 
 # Container
 GAME_STOP_TIMEOUT=30
-GAME_DOCKER_EXTRA="--cap-add SYS_NICE"
+# Keep the ~4GB game install (server + updater staging copy) on the data disk.
+# Inside the container it fills the boot disk's small Docker partition, the
+# updater's rsync fails with "No space left on device", and the server boots on
+# a half-updated install — that's how the 1.0 world conversion lost chest contents.
+GAME_DOCKER_EXTRA="--cap-add SYS_NICE -v ${GAME_DATA_MOUNT}/server-files:/opt/valheim"
+
+# Log lines that mean the server is running on a broken install. If seen while
+# waiting for ready, the container is killed (no save) to protect the world.
+# A handful of unknown prefabs is normal after updates; thousands is not.
+GAME_FATAL_LOG_PATTERN='No space left on device|Found [0-9]{4,} ZDOs with unknown prefabs'
 
 # Valheim server config defaults
 SERVER_NAME="${SERVER_NAME:-Bifrost}"
@@ -69,6 +78,15 @@ game_docker_env_flags() {
   return 0
 }
 
+game_load_config_from_metadata() {
+  local v
+  for v in SERVER_NAME SERVER_PASS WORLD_NAME SERVER_PUBLIC \
+           MODIFIER_COMBAT MODIFIER_DEATHPENALTY MODIFIER_RESOURCES \
+           MODIFIER_RAIDS MODIFIER_PORTALS MODIFIER_PRESET; do
+    keep_from_metadata "$v"
+  done
+}
+
 game_validate_config() {
   if [ -z "${SERVER_PASS:-}" ]; then
     echo "ERROR: SERVER_PASS must be set (min 5 characters)."
@@ -79,4 +97,20 @@ game_validate_config() {
     echo "ERROR: SERVER_PASS must be at least 5 characters."
     return 1
   fi
+}
+
+# Print the world name found in a backup tarball (empty if none).
+#   Valheim 1.0+: <world>/_main.<N>.fwl2  → world = directory name
+#   Legacy:       <world>.fwl             → world = file basename
+valheim_detect_world_from_backup() {
+  local listing world
+  listing=$(tar tzf "$1")
+  world=$(echo "$listing" | grep -E '/_main\.[0-9]+\.fwl2$' | head -1 | sed 's|/_main\.[0-9]*\.fwl2$||; s|.*/||')
+  if [ -z "$world" ]; then
+    world=$(echo "$listing" | grep -E '\.fwl$' | grep -v '_backup_' | head -1 | sed 's|.*/||; s|\.fwl$||')
+  fi
+  if [ -z "$world" ]; then
+    world=$(echo "$listing" | grep -E '\.fwl$' | head -1 | sed 's|.*/||; s|\.fwl$||')
+  fi
+  echo "$world"
 }

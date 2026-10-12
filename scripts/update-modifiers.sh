@@ -101,29 +101,16 @@ fi
 # Read current config from VM metadata (works regardless of VM state)
 read_config_from_metadata() {
   echo "==> Reading current configuration from VM metadata..."
-  local startup_script
-  startup_script=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
-    --format='value(metadata.items[startup-script])' 2>/dev/null) || {
+  load_current_config || {
     echo "ERROR: Could not read VM metadata. Is the VM set up?"
     exit 1
   }
-
-  # Parse -e KEY="VAL" patterns from the startup script
-  parse_env() {
-    local key="$1"
-    echo "$startup_script" | sed -n "s/.*-e ${key}=\"\([^\"]*\)\".*/\1/p" | tail -1
-  }
-
-  SERVER_NAME=$(parse_env "SERVER_NAME")
-  SERVER_PASS=$(parse_env "SERVER_PASS")
-  WORLD_NAME=$(parse_env "WORLD_NAME")
-  SERVER_PUBLIC=$(parse_env "SERVER_PUBLIC")
-  CURRENT_COMBAT=$(parse_env "MODIFIER_COMBAT")
-  CURRENT_DEATHPENALTY=$(parse_env "MODIFIER_DEATHPENALTY")
-  CURRENT_RESOURCES=$(parse_env "MODIFIER_RESOURCES")
-  CURRENT_RAIDS=$(parse_env "MODIFIER_RAIDS")
-  CURRENT_PORTALS=$(parse_env "MODIFIER_PORTALS")
-  CURRENT_PRESET=$(parse_env "MODIFIER_PRESET")
+  CURRENT_COMBAT="$MODIFIER_COMBAT"
+  CURRENT_DEATHPENALTY="$MODIFIER_DEATHPENALTY"
+  CURRENT_RESOURCES="$MODIFIER_RESOURCES"
+  CURRENT_RAIDS="$MODIFIER_RAIDS"
+  CURRENT_PORTALS="$MODIFIER_PORTALS"
+  CURRENT_PRESET="$MODIFIER_PRESET"
 }
 
 # Get VM status (RUNNING, TERMINATED, STAGING, etc.)
@@ -135,13 +122,28 @@ get_vm_status() {
 read_config_from_metadata
 VM_STATUS=$(get_vm_status)
 
-# Read modifiers from the .fwl world file via SSH (running VM only).
+# Read modifiers from the world metadata file via SSH (running VM only).
 # The world file is the source of truth since Valheim bakes modifiers in.
+#   Valheim 1.0+: <world>/_main.<N>.fwl2 (N = save generation; _main.<N>.ok marks a complete save)
+#   Legacy:       <world>.fwl
 read_modifiers_from_world_file() {
-  local world_file="${GAME_DATA_MOUNT}/${GAME_WORLD_SUBDIR}/${WORLD_NAME}.fwl"
+  local worlds_dir="${GAME_DATA_MOUNT}/${GAME_WORLD_SUBDIR}"
   local preset_line
   preset_line=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
-    "sudo cat $world_file 2>/dev/null | tr -cd '[:print:]\n' | grep -oE 'preset [a-z_:]+' | tail -1" 2>/dev/null) || true
+    "sudo bash -s -- '$worlds_dir' '$WORLD_NAME'" 2>/dev/null <<'REMOTE'
+dir="$1/$2"
+f=""
+if [ -d "$dir" ]; then
+  # Newest generation with a completed save, else newest generation
+  for c in $(ls "$dir"/_main.*.fwl2 2>/dev/null | sort -V); do
+    [ -f "${c%.fwl2}.ok" ] && f="$c"
+  done
+  [ -n "$f" ] || f=$(ls "$dir"/_main.*.fwl2 2>/dev/null | sort -V | tail -1)
+fi
+[ -n "$f" ] || f="$dir.fwl"
+cat "$f" 2>/dev/null | tr -cd '[:print:]\n' | grep -oE 'preset [a-z_:]+' | tail -1
+REMOTE
+  ) || true
 
   if [ -n "$preset_line" ]; then
     CURRENT_COMBAT=$(echo "$preset_line" | grep -o 'combat_[^:]*' | cut -d_ -f2 || echo "")
@@ -282,34 +284,23 @@ if [ "$VM_STATUS" = "RUNNING" ]; then
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
     "docker rm '$GAME_CONTAINER_NAME' 2>/dev/null || true"
 
+  # Capture timestamp before starting so we don't miss the ready signal
+  BOOT_TS=$(get_vm_timestamp)
+
   # Re-run the startup script to create a fresh container with new config
   echo "==> Re-running startup script (fresh container with new modifiers)..."
   gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet -- \
     'sudo google_metadata_script_runner startup'
 
   echo "==> Waiting for $GAME_DISPLAY_NAME server to be ready..."
-  POLL_INTERVAL=5
-  BOOT_TS=$(get_vm_timestamp)
-  elapsed=0
-  while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
-    if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-      "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
-      IP=$(gcloud compute instances describe "$VM_NAME" \
-        --zone="$ZONE" \
-        --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-      echo ""
-      echo "==> Modifiers updated successfully!"
-      echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
-      break
-    fi
-    sleep $POLL_INTERVAL
-    elapsed=$((elapsed + POLL_INTERVAL))
-    if (( elapsed % 30 == 0 )); then
-      echo "    ... still waiting (${elapsed}s elapsed)"
-    fi
-  done
-
-  if [ $elapsed -ge $GAME_READY_TIMEOUT ]; then
+  if wait_for_ready "$BOOT_TS" 5; then
+    IP=$(gcloud compute instances describe "$VM_NAME" \
+      --zone="$ZONE" \
+      --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+    echo ""
+    echo "==> Modifiers updated successfully!"
+    echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
+  else
     echo ""
     echo "==> Timed out waiting for readiness. Modifiers were updated but server may still be starting."
   fi

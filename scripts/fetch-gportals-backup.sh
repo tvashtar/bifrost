@@ -29,49 +29,62 @@ if [ -z "$WORLD_NAME" ]; then
 fi
 
 echo "==> Fetching latest backup for world: $WORLD_NAME"
+REMOTE_DIR="${FTP_URL}/save/worlds_local"
+mkdir -p "$BACKUP_DIR"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+TARBALL="$BACKUP_DIR/../${WORLD_NAME}-gportals-${TIMESTAMP}.tar.gz"
+
 echo "==> Listing files from Gportals FTP..."
 
-# List all files in save/worlds_local/
-FILES=$(curl -s "${FTP_URL}/save/worlds_local/" | grep -E "${WORLD_NAME}\.(db|fwl)" | awk '{print $9}')
+# Valheim 1.0+: the world is a directory of chunk files + _main.<N>.* metadata
+WORLD_FILES=$(curl -s --list-only "${REMOTE_DIR}/${WORLD_NAME}/" | tr -d '\r' | grep -vE '^\.{1,2}$' || true)
 
-if [ -z "$FILES" ]; then
-  echo "ERROR: No files found for world: $WORLD_NAME"
-  exit 1
+if echo "$WORLD_FILES" | grep -qE '^_main\.[0-9]+\.fwl2$'; then
+  echo "    Found world directory: ${WORLD_NAME}/ ($(echo "$WORLD_FILES" | wc -l | tr -d ' ') files)"
+
+  # Start clean so files from an older download don't mix with this one
+  rm -rf "${BACKUP_DIR:?}/${WORLD_NAME}"
+  mkdir -p "$BACKUP_DIR/$WORLD_NAME"
+
+  echo "==> Downloading world files..."
+  while IFS= read -r f; do
+    curl -s --fail -o "$BACKUP_DIR/$WORLD_NAME/$f" "${REMOTE_DIR}/${WORLD_NAME}/${f}"
+  done <<< "$WORLD_FILES"
+
+  echo "==> Creating backup tarball..."
+  tar -czf "$TARBALL" -C "$BACKUP_DIR" "$WORLD_NAME"
+  DOWNLOADED="$BACKUP_DIR/$WORLD_NAME/"
+else
+  # Legacy: <world>.db + <world>.fwl
+  FILES=$(curl -s --list-only "${REMOTE_DIR}/" | tr -d '\r')
+  DB_FILE=$(echo "$FILES" | grep -x "${WORLD_NAME}\.db" || true)
+  FWL_FILE=$(echo "$FILES" | grep -x "${WORLD_NAME}\.fwl" || true)
+
+  if [ -z "$DB_FILE" ] || [ -z "$FWL_FILE" ]; then
+    echo "ERROR: No world found for: $WORLD_NAME"
+    echo "    Looked for ${WORLD_NAME}/_main.<N>.fwl2 (Valheim 1.0+) and ${WORLD_NAME}.db + .fwl (legacy)"
+    echo "Available files:"
+    echo "$FILES"
+    exit 1
+  fi
+
+  echo "    Found: $DB_FILE"
+  echo "    Found: $FWL_FILE"
+
+  echo "==> Downloading world files..."
+  curl -s --fail -o "$BACKUP_DIR/$DB_FILE" "${REMOTE_DIR}/${DB_FILE}"
+  curl -s --fail -o "$BACKUP_DIR/$FWL_FILE" "${REMOTE_DIR}/${FWL_FILE}"
+
+  echo "==> Creating backup tarball..."
+  tar -czf "$TARBALL" -C "$BACKUP_DIR" "$DB_FILE" "$FWL_FILE"
+  DOWNLOADED="$BACKUP_DIR/$DB_FILE, $BACKUP_DIR/$FWL_FILE"
 fi
 
-# Find the most recent .db and .fwl files (not backups with timestamps)
-DB_FILE=$(echo "$FILES" | grep "^${WORLD_NAME}\.db$" || true)
-FWL_FILE=$(echo "$FILES" | grep "^${WORLD_NAME}\.fwl$" || true)
-
-if [ -z "$DB_FILE" ] || [ -z "$FWL_FILE" ]; then
-  echo "ERROR: Could not find both ${WORLD_NAME}.db and ${WORLD_NAME}.fwl"
-  echo "Available files:"
-  echo "$FILES"
-  exit 1
-fi
-
-echo "    Found: $DB_FILE"
-echo "    Found: $FWL_FILE"
-
-# Create backup directory
-mkdir -p "$BACKUP_DIR"
-
-echo "==> Downloading world files..."
-cd "$BACKUP_DIR"
-
-curl -s -O "${FTP_URL}/save/worlds_local/${DB_FILE}"
-curl -s -O "${FTP_URL}/save/worlds_local/${FWL_FILE}"
-
-echo "==> Creating backup tarball..."
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-TARBALL="../${WORLD_NAME}-gportals-${TIMESTAMP}.tar.gz"
-tar -czf "$TARBALL" "$DB_FILE" "$FWL_FILE"
-
+TARBALL_REL="backups/$(basename "$TARBALL")"
 echo ""
 echo "==> Backup complete!"
-echo "    Files: $BACKUP_DIR/$DB_FILE"
-echo "           $BACKUP_DIR/$FWL_FILE"
-echo "    Tarball: ${TARBALL#../}"
+echo "    Files: $DOWNLOADED"
+echo "    Tarball: $TARBALL_REL"
 echo ""
-echo "    To restore: ./bifrost restore ${TARBALL#../}"
+echo "    To restore: ./bifrost restore $TARBALL_REL"
 echo ""

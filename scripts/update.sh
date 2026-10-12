@@ -19,6 +19,14 @@ IP=$(gcloud compute instances describe "$VM_NAME" \
   --zone="$ZONE" \
   --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 
+echo "==> Reading current server config from VM metadata..."
+if ! load_current_config; then
+  echo "ERROR: Could not read the current startup-script metadata from $VM_NAME."
+  echo "    Refusing to regenerate it from defaults (would reset world/password/settings)."
+  exit 1
+fi
+echo "    World: ${WORLD_NAME:-n/a}  Server: $SERVER_NAME"
+
 echo "==> Updating VM startup script metadata..."
 STARTUP_FILE=$(mktemp)
 generate_startup_script "$STARTUP_FILE"

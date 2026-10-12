@@ -23,10 +23,17 @@ if [ ! -f "$GAME_CONFIG" ]; then
   exit 1
 fi
 
+# Remember which variables the user set explicitly (shell env or .env) before
+# the game config fills in defaults — see keep_from_metadata below.
+_USER_ENV_VARS=" $(compgen -e | tr '\n' ' ') "
+
 source "$GAME_CONFIG"
 
 # Machine type: use game default unless overridden by env or --size flag
 MACHINE_TYPE="${MACHINE_TYPE:-$GAME_DEFAULT_SIZE}"
+
+# Fatal log pattern (grep -E): checked by wait_for_ready. Games may extend it.
+GAME_FATAL_LOG_PATTERN="${GAME_FATAL_LOG_PATTERN:-No space left on device}"
 
 # Disk size: use game-specific size if set, otherwise the global default
 DISK_SIZE="${GAME_DISK_SIZE:-$DISK_SIZE}"
@@ -55,6 +62,34 @@ write_modifiers_cache() {
   done
   json+="}"
   echo "$json" > "$cache_file"
+}
+
+# Load the server's current config (server name, password, world, modifiers...)
+# from the VM's startup-script metadata, so regenerating the startup script
+# doesn't silently reset it to defaults. Variables the user set explicitly in
+# their environment still win. Each game maps its own variables in
+# game_load_config_from_metadata().
+# Usage: load_current_config  (returns 1 if the VM/metadata can't be read)
+load_current_config() {
+  STARTUP_METADATA=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
+    --format='value(metadata.items[startup-script])' 2>/dev/null) || return 1
+  [ -n "$STARTUP_METADATA" ] || return 1
+  if declare -F game_load_config_from_metadata >/dev/null; then
+    game_load_config_from_metadata
+  fi
+}
+
+# Print the value of a docker `-e KEY="VAL"` flag from the loaded metadata.
+metadata_env() {
+  echo "$STARTUP_METADATA" | sed -n "s/.*-e $1=\"\([^\"]*\)\".*/\1/p" | tail -1
+}
+
+# Set VAR from the metadata's -e KEY (defaults to VAR), unless the user set VAR
+# explicitly. Usage: keep_from_metadata VAR [KEY]
+keep_from_metadata() {
+  local var="$1" key="${2:-$1}"
+  [[ "$_USER_ENV_VARS" == *" $var "* ]] && return 0
+  printf -v "$var" '%s' "$(metadata_env "$key")"
 }
 
 # Wait for SSH and data disk to be ready on the VM.
@@ -94,9 +129,24 @@ wait_for_ready() {
   local last_line=""
 
   while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
-    # Check ALL logs since boot for the ready signal (not just tail)
-    if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-      "docker logs --since '$boot_ts' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
+    # Check ALL logs since boot for a fatal error or the ready signal (not just tail)
+    local check
+    check=$(gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
+      "logs=\$(docker logs --since '$boot_ts' '$GAME_CONTAINER_NAME' 2>&1); \
+       echo \"\$logs\" | grep -E -m1 '$GAME_FATAL_LOG_PATTERN' | sed 's/^/FATAL: /'; \
+       echo \"\$logs\" | grep -Fq '$GAME_READY_SIGNAL' && echo READY" 2>/dev/null) || true
+
+    if echo "$check" | grep -q '^FATAL: '; then
+      # Kill (not stop) so the server can't write a save from a broken install
+      gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
+        "docker kill '$GAME_CONTAINER_NAME'" >/dev/null 2>&1 || true
+      echo ""
+      echo "ERROR: $GAME_DISPLAY_NAME server hit a fatal error. Container killed WITHOUT saving to protect the world:"
+      echo "    $(echo "$check" | grep '^FATAL: ' | head -1 | sed 's/^FATAL: //' | sed 's/\x1b\[[0-9;]*m//g')"
+      echo "    Check disk space: gcloud compute ssh $VM_NAME --zone=$ZONE -- 'df -h / /var/lib/docker $GAME_DATA_MOUNT'"
+      exit 1
+    fi
+    if echo "$check" | grep -qx 'READY'; then
       return 0
     fi
 

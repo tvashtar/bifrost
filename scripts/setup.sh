@@ -37,13 +37,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# If restoring, detect world name from backup (Valheim-specific: .fwl files)
+# If restoring, detect world name from backup (Valheim-specific)
 if [ -n "$RESTORE_FILE" ]; then
   if [ "$GAME_ID" = "valheim" ]; then
-    DETECTED_WORLD=$(tar tzf "$RESTORE_FILE" | grep -E '\.fwl$' | grep -v '_backup_' | head -1 | sed 's|.*/||; s|\.fwl$||')
-    if [ -z "$DETECTED_WORLD" ]; then
-      DETECTED_WORLD=$(tar tzf "$RESTORE_FILE" | grep -E '\.fwl$' | head -1 | sed 's|.*/||; s|\.fwl$||')
-    fi
+    DETECTED_WORLD=$(valheim_detect_world_from_backup "$RESTORE_FILE")
     if [ -n "$DETECTED_WORLD" ]; then
       echo "==> Detected world name from backup: $DETECTED_WORLD"
       WORLD_NAME="$DETECTED_WORLD"

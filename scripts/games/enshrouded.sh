@@ -53,6 +53,12 @@ game_docker_env_flags() {
   return 0
 }
 
+game_load_config_from_metadata() {
+  keep_from_metadata SERVER_NAME
+  keep_from_metadata ENSHROUDED_SLOTS SERVER_SLOT_COUNT
+  keep_from_metadata SERVER_PASS SERVER_PASSWORD
+}
+
 game_validate_config() {
   if [ "$MACHINE_TYPE" = "e2-small" ] && [ -z "${FORCE_SMALL:-}" ]; then
     echo "WARNING: Enshrouded needs at least 4GB RAM (e2-medium)."

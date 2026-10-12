@@ -57,6 +57,15 @@ game_docker_env_flags() {
   [ -n "$MC_OPS" ] && echo " -e OPS=\"$MC_OPS\"" || true
 }
 
+game_load_config_from_metadata() {
+  keep_from_metadata SERVER_NAME
+  keep_from_metadata MC_DIFFICULTY DIFFICULTY
+  keep_from_metadata MC_GAMEMODE GAMEMODE
+  keep_from_metadata MC_MEMORY MEMORY
+  keep_from_metadata MC_MOTD MOTD
+  keep_from_metadata MC_OPS OPS
+}
+
 game_validate_config() {
   # No strict requirements — EULA is auto-accepted in env flags
   return 0

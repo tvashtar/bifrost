@@ -23,12 +23,17 @@ if [ ! -f "$BACKUP_FILE" ]; then
   exit 1
 fi
 
-# Detect world name from backup (Valheim-specific: .fwl files)
+# Keep the server's current settings; only WORLD_NAME may change below
+echo "==> Reading current server config from VM metadata..."
+if ! load_current_config; then
+  echo "ERROR: Could not read the current startup-script metadata from $VM_NAME."
+  echo "    Refusing to regenerate it from defaults (would reset world/password/settings)."
+  exit 1
+fi
+
+# Detect world name from backup (Valheim-specific)
 if [ "$GAME_ID" = "valheim" ]; then
-  DETECTED_WORLD=$(tar tzf "$BACKUP_FILE" | grep -E '\.fwl$' | grep -v '_backup_' | head -1 | sed 's|.*/||; s|\.fwl$||')
-  if [ -z "$DETECTED_WORLD" ]; then
-    DETECTED_WORLD=$(tar tzf "$BACKUP_FILE" | grep -E '\.fwl$' | head -1 | sed 's|.*/||; s|\.fwl$||')
-  fi
+  DETECTED_WORLD=$(valheim_detect_world_from_backup "$BACKUP_FILE")
   if [ -n "$DETECTED_WORLD" ]; then
     echo "==> Detected world name: $DETECTED_WORLD"
     WORLD_NAME="$DETECTED_WORLD"
@@ -78,6 +83,9 @@ if [ "$GAME_ID" = "valheim" ]; then
   fi
 fi
 
+# Capture timestamp before starting so we don't miss the ready signal
+BOOT_TS=$(get_vm_timestamp)
+
 if [ "$NEEDS_RECREATE" = true ]; then
   # Update startup script metadata with new config
   STARTUP_FILE=$(mktemp)
@@ -103,32 +111,20 @@ else
 fi
 
 echo "==> Waiting for server to be ready..."
-POLL_INTERVAL=5
-BOOT_TS=$(get_vm_timestamp)
-elapsed=0
-while [ $elapsed -lt $GAME_READY_TIMEOUT ]; do
-  if gcloud compute ssh "$VM_NAME" --zone="$ZONE" --quiet --command \
-    "docker logs --since '$BOOT_TS' '$GAME_CONTAINER_NAME' 2>&1 | grep -Fq '$GAME_READY_SIGNAL'" 2>/dev/null; then
-    IP=$(gcloud compute instances describe "$VM_NAME" \
-      --zone="$ZONE" \
-      --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-    echo ""
-    echo "==> Restore complete! Server is ready."
-    echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
-    echo ""
-    # Cache modifiers from the restored world (reads .fwl file via SSH)
-    if [ "$GAME_ID" = "valheim" ]; then
-      "$SCRIPT_DIR/update-modifiers.sh" --list > /dev/null 2>&1 || true
-    fi
-    exit 0
+if wait_for_ready "$BOOT_TS" 5; then
+  IP=$(gcloud compute instances describe "$VM_NAME" \
+    --zone="$ZONE" \
+    --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+  echo ""
+  echo "==> Restore complete! Server is ready."
+  echo "    Connect to $GAME_DISPLAY_NAME: $IP:$GAME_CONNECT_PORT"
+  echo ""
+  # Cache modifiers from the restored world (reads world file via SSH)
+  if [ "$GAME_ID" = "valheim" ]; then
+    "$SCRIPT_DIR/update-modifiers.sh" --list > /dev/null 2>&1 || true
   fi
-
-  sleep $POLL_INTERVAL
-  elapsed=$((elapsed + POLL_INTERVAL))
-  if (( elapsed % 30 == 0 )); then
-    echo "    ... still waiting (${elapsed}s elapsed)"
-  fi
-done
+  exit 0
+fi
 
 echo ""
 echo "==> Timed out waiting for readiness. Check logs manually."

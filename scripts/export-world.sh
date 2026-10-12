@@ -25,17 +25,26 @@ else
   exit 1
 fi
 
-# List available worlds (.fwl files define a world)
+# List available worlds:
+#   Valheim 1.0+: <world>/_main.<N>.fwl2 (a directory per world)
+#   Legacy:       <world>.fwl
 echo "==> Available worlds in: $WORLDS_DIR"
 WORLDS=()
+add_world() {
+  [[ "$1" == *_backup_* ]] && return 0
+  [[ " ${WORLDS[*]-} " == *" $1 "* ]] && return 0
+  WORLDS+=("$1")
+  echo "    - $1"
+}
+while IFS= read -r fwl2; do
+  add_world "$(basename "$(dirname "$fwl2")")"
+done < <(find "$WORLDS_DIR" -mindepth 2 -maxdepth 2 -name "_main.*.fwl2" 2>/dev/null)
 while IFS= read -r fwl; do
-  name=$(basename "$fwl" .fwl)
-  WORLDS+=("$name")
-  echo "    - $name"
-done < <(find "$WORLDS_DIR" -name "*.fwl" -maxdepth 1 2>/dev/null)
+  add_world "$(basename "$fwl" .fwl)"
+done < <(find "$WORLDS_DIR" -maxdepth 1 -name "*.fwl" 2>/dev/null)
 
 if [ ${#WORLDS[@]} -eq 0 ]; then
-  echo "    No worlds found (.fwl files)"
+  echo "    No worlds found (.fwl2 or .fwl files)"
   exit 1
 fi
 
@@ -52,23 +61,24 @@ else
   fi
 fi
 
-# Package into the same format as backup.sh (tar of /config structure)
-# The server expects worlds in /config/worlds_local/
+# Package into the same format as backup.sh (tar of worlds_local contents,
+# extracted by restore.sh into /config/worlds_local/)
 mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/valheim-backup-$TIMESTAMP.tar.gz"
+BACKUP_FILE="$BACKUP_DIR/valheim-$WORLD-$TIMESTAMP.tar.gz"
 
-# Create a temp dir with the expected directory structure
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
-
-mkdir -p "$TMPDIR/worlds_local"
-cp "$WORLDS_DIR/$WORLD".fwl "$TMPDIR/worlds_local/"
-cp "$WORLDS_DIR/$WORLD".db "$TMPDIR/worlds_local/" 2>/dev/null || true
-cp "$WORLDS_DIR/$WORLD".db.old "$TMPDIR/worlds_local/" 2>/dev/null || true
-cp "$WORLDS_DIR/$WORLD".fwl.old "$TMPDIR/worlds_local/" 2>/dev/null || true
-
-tar czf "$BACKUP_FILE" -C "$TMPDIR" .
+if [ -d "$WORLDS_DIR/$WORLD" ]; then
+  # Valheim 1.0+: the whole world directory (the server loads the newest
+  # generation that has a matching _main.<N>.ok)
+  tar czf "$BACKUP_FILE" -C "$WORLDS_DIR" "$WORLD"
+else
+  # Legacy: <world>.fwl + <world>.db (+ .old copies if present)
+  FILES=()
+  for f in "$WORLD.fwl" "$WORLD.db" "$WORLD.fwl.old" "$WORLD.db.old"; do
+    [ -f "$WORLDS_DIR/$f" ] && FILES+=("$f")
+  done
+  tar czf "$BACKUP_FILE" -C "$WORLDS_DIR" "${FILES[@]}"
+fi
 
 echo ""
 echo "==> Exported to: $BACKUP_FILE"
